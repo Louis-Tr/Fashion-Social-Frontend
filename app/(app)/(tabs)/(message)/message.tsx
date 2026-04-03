@@ -8,140 +8,136 @@ import {
   StyleSheet,
   Image,
   RefreshControl,
-  SafeAreaView,
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { useDispatch, useSelector } from 'react-redux'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { fetchConversations } from '@/services/message/fetchConversation'
-
-import { AppDispatch, RootState, store } from '@/store/store'
-import { fetchFeed } from '@/services/feed'
-import { useDispatch, useSelector } from 'react-redux'
-//import { Conversation } from '@/types/schemas/conversation'
+import type { AppDispatch, RootState } from '@/store/store'
 import { urlFromKey } from '@/services/media/urlFromKey'
-import { z } from 'zod'
-import { BASE_URL } from '@/constants/Url'
-import { getToken } from '@/utils/token'
-import { setConversation } from '@/store/slices/conversationSlice'
-import { Conversation } from '@/types/schemas/conversation'
-import { options } from 'prettier-plugin-tailwindcss'
+import type { Conversation } from '@/types/schemas/conversation'
 
 export default function MessageListScreen() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const dispatch = useDispatch<AppDispatch>()
 
   const { conversations, isLoadingConversation } = useSelector(
     (state: RootState) => state.conversation
   )
   const me = useSelector((state: RootState) => state.auth.user)
+  const meId = me?.sub ?? null
 
-  const meId = me?.sub
+  const [refreshing, setRefreshing] = useState(false)
 
+  // initial load
   useEffect(() => {
     console.log('Load Conversations')
     dispatch(fetchConversations())
-  }, [])
+  }, [dispatch])
 
-  function onRefresh() {}
+  const onRefresh = useCallback(() => {
+    setRefreshing(true)
+    dispatch(fetchConversations()).finally(() => {
+      setRefreshing(false)
+    })
+  }, [dispatch])
 
-  function renderItem({ item }: { item: Conversation }) {
-    const isDirect = item.type === 'dm'
+  const renderItem = useCallback(
+    ({ item }: { item: Conversation }) => {
+      const isDirect = item.type === 'dm'
 
-    // other participant for DM
-    const other =
-      isDirect && meId
-        ? item.participants.find((p) => p.id !== meId)
-        : undefined
+      const other =
+        isDirect && meId
+          ? item.participants.find((p) => p.id !== meId)
+          : undefined
 
-    const title = isDirect
-      ? (other?.displayName ?? 'Direct message')
-      : 'Group chat' // later: real group name
+      const title = isDirect
+        ? (other?.displayName ?? 'Direct message')
+        : 'Group chat' // later: real group name
 
-    const avatarUri =
-      isDirect && other?.avatarKey ? urlFromKey(other.avatarKey) : undefined
+      const avatarUri =
+        isDirect && other?.avatarKey ? urlFromKey(other.avatarKey) : undefined
 
-    const lastMessageText = item.lastMessage?.content ?? 'No messages yet' // adjust to .content if your schema uses that
+      const lastMessageText = item.lastMessage?.content ?? 'No messages yet'
 
-    const time = item.lastMessage?.createdAt
-      ? new Date(item.lastMessage.createdAt).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : ''
-
-    return (
-      <TouchableOpacity
-        style={styles.row}
-        onPress={() =>
-          router.push({
-            pathname: './[id]',
-            params: {
-              id: item.id,
-              avatarUri: avatarUri,
-            },
+      const time = item.lastMessage?.createdAt
+        ? new Date(item.lastMessage.createdAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
           })
-        }
-      >
-        <View style={styles.avatarWrapper}>
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.avatarFallbackText}>
-                {title?.[0]?.toUpperCase() || '?'}
+        : ''
+
+      return (
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() =>
+            router.push({
+              pathname: './[id]',
+              params: {
+                id: item.id,
+                avatarUri: avatarUri,
+              },
+            })
+          }
+        >
+          <View style={styles.avatarWrapper}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarFallbackText}>
+                  {title?.[0]?.toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.rowContent}>
+            <View style={styles.rowHeader}>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+              <Text style={styles.time}>{time}</Text>
+            </View>
+
+            <View style={styles.rowFooter}>
+              <Text style={styles.lastMessage} numberOfLines={1}>
+                {lastMessageText}
               </Text>
             </View>
-          )}
-        </View>
-
-        <View style={styles.rowContent}>
-          <View style={styles.rowHeader}>
-            <Text style={styles.title} numberOfLines={1}>
-              {title}
-            </Text>
-            <Text style={styles.time}>{time}</Text>
           </View>
+        </TouchableOpacity>
+      )
+    },
+    [router, meId]
+  )
 
-          <View style={styles.rowFooter}>
-            <Text style={styles.lastMessage} numberOfLines={1}>
-              {lastMessageText}
-            </Text>
-            {/* if you still have unread_count on this type, keep this */}
-            {/* {item.unread_count > 0 && ... } */}
-          </View>
-        </View>
-      </TouchableOpacity>
-    )
-  }
-
-  if (isLoadingConversation) {
+  if (isLoadingConversation && !refreshing) {
     return (
-      <View style={styles.center}>
+      <SafeAreaView edges={['top']} style={styles.center}>
         <ActivityIndicator />
-      </View>
+      </SafeAreaView>
     )
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <View style={styles.container}>
-        <FlatList
-          data={conversations}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={styles.empty}>No conversations yet.</Text>
-            </View>
-          }
-        />
-      </View>
+    <SafeAreaView edges={['top']} style={styles.container}>
+      <Text style={styles.headerTitle}>Fashion Talks</Text>
+      <FlatList
+        data={conversations}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.center}>
+            <Text style={styles.empty}>No conversations yet.</Text>
+          </View>
+        }
+      />
     </SafeAreaView>
   )
 }
@@ -149,6 +145,14 @@ export default function MessageListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: {
+    fontSize: 24, // text-2xl
+    fontWeight: '600', // font-semibold
+    letterSpacing: 0.5, // tracking-wide (approx)
+    color: '#DB2777', // text-pink-600
+    paddingHorizontal: 16, // optional: aligns with list padding
+    paddingBottom: 8, // optional: breathing room
+  },
   row: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -187,15 +191,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   lastMessage: { flex: 1, color: '#555', fontSize: 14, marginRight: 8 },
-  badge: {
-    minWidth: 24,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 12,
-    backgroundColor: '#007AFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   empty: { fontSize: 14, color: '#666' },
 })

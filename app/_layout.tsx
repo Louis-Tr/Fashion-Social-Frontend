@@ -1,151 +1,182 @@
-import {SplashScreen, Stack, usePathname, useRouter} from "expo-router";
-import {Provider, useDispatch, useSelector} from "react-redux";
-import {RootState, store} from "@/store/store";
-import React, {useEffect, useState} from "react";
-import {Amplify} from "aws-amplify";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {fetchAuthSession} from "aws-amplify/auth";
-import {setAuthState, setFirstLaunch} from "@/store/slices/authSlice";
-import {Hub} from "aws-amplify/utils";
-import {ActivityIndicator, View} from "react-native";
-import "../global.css";
+import React, { useEffect, useMemo, useState } from 'react'
+import { ActivityIndicator, View } from 'react-native'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { Provider, useDispatch, useSelector } from 'react-redux'
+import { SplashScreen, Stack } from 'expo-router'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
+import { Amplify } from 'aws-amplify'
+import '@aws-amplify/react-native'
+import { fetchAuthSession, fetchUserAttributes } from 'aws-amplify/auth'
+import { Hub } from 'aws-amplify/utils'
+
+import '../global.css'
 import {
   useFonts,
   Inter_400Regular,
   Inter_500Medium,
-  Inter_700Bold
-} from '@expo-google-fonts/inter';
+  Inter_700Bold,
+} from '@expo-google-fonts/inter'
 
-SplashScreen.preventAutoHideAsync();
+import { awsConfig } from '@/awsconfig'
+import { RootState, store } from '@/store/store'
+import { setAuthState, setFirstLaunch } from '@/store/slices/authSlice'
+import { WebSocketProvider } from '@/contexts/WebSocketContext'
 
-Amplify.configure({
-  Auth: {
-    Cognito: {
-      userPoolId: process.env.USER_POOL_ID || "",
-      userPoolClientId: process.env.USER_POOL_CLIENT_ID || "",
-      loginWith: { email: true, username: false, phone: false },
-    },
-  },
-});
+SplashScreen.preventAutoHideAsync()
 
-const checkFirstLaunch = async (): Promise<boolean> => {
-  const hasLaunched = await AsyncStorage.getItem("hasLaunched");
-  console.log("AsyncStorage - hasLaunched:", hasLaunched);
+// Configure Amplify once (module scope)
+try {
+  Amplify.configure(awsConfig)
+  console.log('✅ Amplify configured:', Amplify.getConfig())
+} catch (e) {
+  console.error('❌ Amplify config failed:', e)
+}
+
+console.log('App Layout - process.env:', process.env)
+
+async function checkFirstLaunch(): Promise<boolean> {
+  const hasLaunched = await AsyncStorage.getItem('hasLaunched')
+  console.log('AsyncStorage - hasLaunched:', hasLaunched)
+
   if (hasLaunched === null) {
-    await AsyncStorage.setItem("hasLaunched", "true");
-    console.log("First launch detected. Setting flag.");
-    return true;
+    await AsyncStorage.setItem('hasLaunched', 'true')
+    console.log('First launch detected. Setting flag.')
+    return true
   }
-  return false;
-};
+  return false
+}
+
+function FullscreenSpinner() {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" />
+    </View>
+  )
+}
 
 export default function RootLayout() {
   return (
-    <Provider store={store}>
-      <RootLayoutInner/>
-    </Provider>
-  );
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Provider store={store}>
+        <RootLayoutInner />
+      </Provider>
+    </GestureHandlerRootView>
+  )
 }
 
 function RootLayoutInner() {
-  const [checking, setChecking] = useState(true);
-  const [loaded, error] = useFonts({
+  const dispatch = useDispatch()
+  const auth = useSelector((state: RootState) => state.auth)
+
+  const [checking, setChecking] = useState(true)
+
+  const [loaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_700Bold,
-  });
+  })
 
-  const router = useRouter();
-  const pathname = usePathname();
-  const dispatch = useDispatch();
-  const auth = useSelector((state: RootState) => state.auth);
-
-  // ⛔ Handle font loading error
+  // Ensure we don't render until fonts are ready
   useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+    if (fontError) throw fontError
+  }, [fontError])
 
-  // Handle first launch and authentication state
-  // First launch
+  // First launch check (keep existing behavior: always dispatch false)
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded) return
+    ;(async () => {
+      const isFirst = await checkFirstLaunch()
+      // keep functionality identical to your current code:
+      // dispatch(setFirstLaunch(isFirst))
+      dispatch(setFirstLaunch(false))
+    })()
+  }, [loaded, dispatch])
 
-    const initFirstLaunch = async () => {
-      const isFirstLaunch = await checkFirstLaunch();
-      // dispatch(setFirstLaunch(isFirstLaunch));
-      dispatch(setFirstLaunch(false));
-    };
-
-    initFirstLaunch();
-  }, [loaded]);
-
-  // Authentication state
+  // Auth bootstrap + auth Hub listener
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded) return
 
-    const checkAuth = async () => {
+    let isMounted = true
+
+    const syncSignedInState = async () => {
+      const session = await fetchAuthSession({ forceRefresh: true })
+      const isSignedIn = !!session.tokens?.idToken
+      const user = await fetchUserAttributes()
+
+      dispatch(
+        setAuthState({
+          user: user || null,
+          token: session.tokens?.accessToken?.toString() || null,
+          isLoggedIn: isSignedIn,
+        })
+      )
+
+      console.log('Auth session:', session)
+    }
+
+    const removeHubListener = Hub.listen('auth', async ({ payload }) => {
       try {
-        const session = await fetchAuthSession({forceRefresh: true});
-        const isSignedIn = !!session.tokens?.idToken;
+        if (payload.event === 'signedIn') {
+          const session = await fetchAuthSession()
+          const user = await fetchUserAttributes()
 
-        dispatch(
-          setAuthState({
-            user: session.userSub || null,
-            isLoggedIn: isSignedIn,
-          }),
-        );
-        console.log("Auth session:", session);
+          dispatch(
+            setAuthState({
+              user: user || null,
+              token: session.tokens?.accessToken?.toString() || null,
+              isLoggedIn: true,
+            })
+          )
+        }
+
+        if (payload.event === 'signedOut') {
+          dispatch(setAuthState({ user: null, token: null, isLoggedIn: false }))
+        }
       } catch (err) {
-        console.log("Auth check failed:", err);
+        console.log('Auth Hub handler failed:', err)
       }
-    };
+    })
 
-    const unsubscribe = Hub.listen("auth", async ({payload}) => {
-      if (payload.event === "signedIn") {
-        const session = await fetchAuthSession();
-        dispatch(
-          setAuthState({
-            user: session.tokens?.idToken?.payload?.sub || null,
-            isLoggedIn: true,
-          }),
-        );
+    ;(async () => {
+      try {
+        await syncSignedInState()
+      } catch (err) {
+        console.log('Auth check failed:', err)
+      } finally {
+        if (!isMounted) return
+        setChecking(false)
+        await SplashScreen.hideAsync()
       }
-      if (payload.event === "signedOut") {
-        dispatch(setAuthState({user: null, isLoggedIn: false}));
-      }
-    });
+    })()
 
-    checkAuth().finally(() => {
-      setChecking(false);
-      SplashScreen.hideAsync();
-    });
-    return () => unsubscribe();
-  }, [loaded]);
+    return () => {
+      isMounted = false
+      removeHubListener()
+    }
+  }, [loaded, dispatch])
 
+  const ready = useMemo(() => loaded && !checking, [loaded, checking])
 
-  if (!loaded || checking) {
-    return (
-      <View style={{flex: 1, justifyContent: "center", alignItems: "center"}}>
-        <ActivityIndicator size="large"/>
-      </View>
-    );
-  }
+  if (!ready) return <FullscreenSpinner />
 
-  // @ts-ignore
   return (
-    <Stack>
-      <Stack.Protected guard={auth.isLoggedIn}>
-        <Stack.Screen
-          name="(app)"
-          options={{headerShown: false, gestureEnabled: false}}
-        />
-      </Stack.Protected>
-      <Stack.Protected guard={!auth.isLoggedIn}>
-        <Stack.Screen
-          name="(auth)"
-          options={{headerShown: false, gestureEnabled: false}}
-        />
-      </Stack.Protected>
-    </Stack>
-  );
+    <WebSocketProvider enabled={auth.isLoggedIn}>
+      <Stack>
+        <Stack.Protected guard={auth.isLoggedIn}>
+          <Stack.Screen
+            name="(app)"
+            options={{ headerShown: false, gestureEnabled: false }}
+          />
+        </Stack.Protected>
+
+        <Stack.Protected guard={!auth.isLoggedIn}>
+          <Stack.Screen
+            name="(auth)"
+            options={{ headerShown: false, gestureEnabled: false }}
+          />
+        </Stack.Protected>
+      </Stack>
+    </WebSocketProvider>
+  )
 }

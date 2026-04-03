@@ -1,5 +1,12 @@
 // app/message/[id].tsx
-import React, { useEffect, useCallback, useMemo, useState, memo } from 'react'
+import React, {
+  useEffect,
+  useCallback,
+  useMemo,
+  useState,
+  memo,
+  useRef,
+} from 'react'
 import {
   View,
   Text,
@@ -20,16 +27,21 @@ import type { RootState, AppDispatch } from '@/store/store'
 import { fetchMessages } from '@/services/message/fetchMessages'
 import type { Message } from '@/types/schemas/conversation'
 import { useWebSocket } from '@/contexts/WebSocketContext'
+import { hideTabBar, showTabBar } from '@/store/slices/tabBarSlice'
+
+type MessageRow =
+  | { type: 'time'; id: string; label: string }
+  | { type: 'message'; id: string; message: Message }
 
 /* ---------------------- Memoized Message Bubble ---------------------- */
+const TIME_BREAK_MINUTES = 30
+
 function parseCreatedAt(value: string): Date {
   if (!value) return new Date(NaN)
 
-  // First, try native parsing (in case backend changes to ISO later)
   const direct = new Date(value)
   if (!Number.isNaN(direct.getTime())) return direct
 
-  // Expecting: "YYYY-MM-DD HH:mm:ss.SSSSSS+00"
   const match = value.match(
     /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?\+(\d{2})$/
   )
@@ -40,10 +52,9 @@ function parseCreatedAt(value: string): Date {
   }
 
   const [, y, m, d, hh, mm, ss, frac] = match
-  const ms = frac ? Number(frac.slice(0, 3)) : 0 // truncate to ms
+  const ms = frac ? Number(frac.slice(0, 3)) : 0
 
-  // +00 → UTC
-  const date = new Date(
+  return new Date(
     Date.UTC(
       Number(y),
       Number(m) - 1,
@@ -54,9 +65,86 @@ function parseCreatedAt(value: string): Date {
       ms
     )
   )
+}
 
-  console.log('[parseCreatedAt] parsed', { value, iso: date.toISOString() })
-  return date
+function isTimeBreakNeeded(newer: Message, older: Message) {
+  const newerDate = parseCreatedAt(newer.createdAt)
+  const olderDate = parseCreatedAt(older.createdAt)
+
+  if (Number.isNaN(newerDate.getTime()) || Number.isNaN(olderDate.getTime())) {
+    return false
+  }
+
+  const diffMs = Math.abs(newerDate.getTime() - olderDate.getTime())
+  const diffMinutes = diffMs / (1000 * 60)
+
+  const isDifferentDay =
+    newerDate.getFullYear() !== olderDate.getFullYear() ||
+    newerDate.getMonth() !== olderDate.getMonth() ||
+    newerDate.getDate() !== olderDate.getDate()
+
+  return isDifferentDay || diffMinutes >= TIME_BREAK_MINUTES
+}
+
+function formatTimeBreak(value: string) {
+  const date = parseCreatedAt(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function buildMessageRows(messages: Message[]): MessageRow[] {
+  console.log(`input messages (${messages.length})`)
+  messages.forEach((m, index) => {
+    console.log(
+      `[msg ${index}] id=${m.id} sender=${m.senderId} createdAt=${m.createdAt} content="${m.content ?? ''}"`
+    )
+  })
+
+  if (messages.length === 0) {
+    console.log('output rows (0)')
+    console.groupEnd()
+    return []
+  }
+  if (messages.length === 0) return []
+
+  // messages must already be DESC: newest -> oldest
+  const rows: MessageRow[] = []
+
+  for (let i = 0; i < messages.length; i++) {
+    const current = messages[i]
+    const newer = messages[i - 1]
+
+    if (newer && isTimeBreakNeeded(newer, current)) {
+      // Insert a time row before the current message if there is a large gap
+      // between the newer message and the current older message.
+      rows.push({
+        type: 'time',
+        id: `time-${current.id}`,
+        label: formatTimeBreak(current.createdAt),
+      })
+    }
+
+    rows.push({
+      type: 'message',
+      id: current.id,
+      message: current,
+    })
+  }
+
+  rows.push({
+    type: 'time',
+    id: `time-${messages[messages.length - 1].id}`,
+    label: formatTimeBreak(messages[messages.length - 1].createdAt),
+  })
+
+  return rows
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -74,14 +162,6 @@ const MessageBubble = memo(function MessageBubble({
   const isValid = !Number.isNaN(createdAtDate.getTime())
 
   const showAvatar = !isMe && isBeforeMe
-
-  console.log('[MessageBubble] render', {
-    id: item.id,
-    rawCreatedAt: item.createdAt,
-    isMe,
-    isBeforeMe,
-    showAvatar,
-  })
 
   return (
     <View
@@ -113,14 +193,6 @@ const MessageBubble = memo(function MessageBubble({
               {item.content}
             </Text>
           )}
-          <Text style={styles.timeBubble}>
-            {isValid
-              ? createdAtDate.toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : '—'}
-          </Text>
         </View>
       </View>
     </View>
@@ -173,6 +245,18 @@ const MessageInputBar = memo(function MessageInputBar({
   )
 })
 
+const TimeBreak = memo(function TimeBreak({ label }: { label: string }) {
+  if (!label) return null
+
+  return (
+    <View style={styles.timeBreakRow}>
+      <View style={styles.timeBreakLine} />
+      <Text style={styles.timeBreakText}>{label}</Text>
+      <View style={styles.timeBreakLine} />
+    </View>
+  )
+})
+
 /* -------------------------- Screen Component ------------------------- */
 
 export default function ConversationScreen() {
@@ -182,12 +266,26 @@ export default function ConversationScreen() {
   }>()
   const conversationId = id as string
 
+  const listRef = useRef<FlatList<MessageRow>>(null)
+  const pendingScrollToLatestRef = useRef(false)
+  const previousTopMessageIdRef = useRef<string | undefined>(undefined)
+
   const dispatch = useDispatch<AppDispatch>()
   const { conversations, isLoadingConversation } = useSelector(
     (state: RootState) => state.conversation
   )
   // auth.user?.sub is the user id used by backend
   const meId = useSelector((state: RootState) => state.auth.user?.sub)
+  useEffect(() => {
+    if (id) {
+      dispatch(hideTabBar())
+    } else {
+      dispatch(showTabBar())
+    }
+    return () => {
+      dispatch(showTabBar())
+    }
+  }, [id, dispatch])
 
   const { subscribe, unsubscribe, sendMessage, conversationReady } =
     useWebSocket()
@@ -195,20 +293,14 @@ export default function ConversationScreen() {
   const conversation = conversations.find((c) => c.id === conversationId)
   const messages: Message[] = conversation?.messages ?? []
 
-  // Sort oldest → newest, then use `inverted` so newest is at the bottom
+  // Sort newest → oldest, then use `inverted` so newest is at the bottom
   const displayMessages = useMemo(() => {
-    const sorted = [...messages].sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt)
-    )
+    return [...messages].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }, [messages])
 
-    console.log('[ConversationScreen] displayMessages sorted DESC', {
-      conversationId,
-      count: sorted.length,
-      ids: sorted.map((m) => m.id),
-    })
-
-    return sorted
-  }, [messages, conversationId])
+  const rows = useMemo(() => {
+    return buildMessageRows(displayMessages)
+  }, [displayMessages])
 
   useEffect(() => {
     console.log('[ConversationScreen] mount', { conversationId, meId })
@@ -234,18 +326,22 @@ export default function ConversationScreen() {
     }
   }, [conversationId, subscribe, unsubscribe])
 
-  // log whenever messages change
   useEffect(() => {
-    console.log('[ConversationScreen] messages updated', {
-      conversationId,
-      count: messages.length,
-      messages: messages.map((m) => ({
-        id: m.id,
-        senderId: m.senderId,
-        createdAt: m.createdAt,
-      })),
-    })
-  }, [conversationId, messages])
+    const newestId = displayMessages[0]?.id
+
+    if (
+      pendingScrollToLatestRef.current &&
+      newestId &&
+      newestId !== previousTopMessageIdRef.current
+    ) {
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true })
+        pendingScrollToLatestRef.current = false
+      })
+    }
+
+    previousTopMessageIdRef.current = newestId
+  }, [displayMessages])
 
   // load more (older) messages when user scrolls up
   const handleLoadMore = useCallback(() => {
@@ -258,36 +354,49 @@ export default function ConversationScreen() {
   }, [conversationId, isLoadingConversation, dispatch])
 
   const renderItem = useCallback(
-    ({ item, index }: { item: Message; index: number }) => {
-      const isMe = item.senderId === meId
+    ({ item, index }: { item: MessageRow; index: number }) => {
+      if (item.type === 'time') {
+        return <TimeBreak label={item.label} />
+      }
 
-      // Access next item (messages sorted DESC because inverted)
-      const before = displayMessages[index - 1]
+      const message = item.message
+      const isMe = message.senderId === meId
 
-      const isBeforeMe = before?.senderId === meId
+      // Find neighboring message rows only
+      let newerMessage: Message | undefined
+      for (let i = index - 1; i >= 0; i--) {
+        const row = rows[i]
+        if (row.type === 'message') {
+          newerMessage = row.message
+          break
+        }
+      }
+
+      const isBeforeMe = newerMessage?.senderId === meId
 
       return (
         <MessageBubble
-          item={item}
+          item={message}
           isMe={isMe}
           isBeforeMe={isBeforeMe}
           avatarUri={avatarUri}
         />
       )
     },
-    [meId, displayMessages, avatarUri]
+    [meId, rows, avatarUri]
   )
 
   const handleSend = useCallback(
     (convId: string, text: string) => {
-      console.log('[ConversationScreen] sendMessage', {
-        conversationId: convId,
-        text,
-        meId,
-      })
+      pendingScrollToLatestRef.current = true
+
       sendMessage(convId, text)
+
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true })
+      })
     },
-    [sendMessage, meId]
+    [sendMessage]
   )
 
   if (!conversationId) {
@@ -315,7 +424,7 @@ export default function ConversationScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -323,13 +432,14 @@ export default function ConversationScreen() {
       >
         <View style={styles.container}>
           <FlatList
-            data={displayMessages}
+            ref={listRef}
+            data={rows}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             inverted
             contentContainerStyle={{ paddingVertical: 8 }}
             maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-            onEndReached={handleLoadMore}
+            onScrollToTop={handleLoadMore}
             ListFooterComponent={
               isLoadingConversation ? (
                 <View style={styles.footer}>
@@ -358,6 +468,7 @@ export default function ConversationScreen() {
 }
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#fff' },
   container: { flex: 1, backgroundColor: '#fff' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   footer: { paddingVertical: 8 },
@@ -418,6 +529,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 8,
     paddingVertical: 6,
+    paddingBottom: 32,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#ddd',
     backgroundColor: '#fff',
@@ -449,5 +561,23 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 14,
+  },
+
+  timeBreakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    marginVertical: 10,
+  },
+  timeBreakLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#ddd',
+  },
+  timeBreakText: {
+    marginHorizontal: 10,
+    fontSize: 12,
+    color: '#777',
   },
 })

@@ -1,169 +1,411 @@
-import React, {useState} from "react";
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import {
-  View,
+  ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
   Text,
   TextInput,
-  Pressable,
-  KeyboardAvoidingView,
-  Platform,
-  Keyboard,
-  TouchableWithoutFeedback, TouchableOpacity,
-} from "react-native";
-import {SafeAreaView} from "react-native-safe-area-context";
-import {useRouter} from "expo-router";
-import {setAuthState} from "@/store/slices/authSlice";
-import {useDispatch} from "react-redux";
-import CoffeCup from "@/assets/illustrations/CoffeCup.svg";
-import {fetchAuthSession, signIn} from "aws-amplify/auth"
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useRouter } from 'expo-router'
+import { useDispatch } from 'react-redux'
+import { fetchAuthSession, signIn } from 'aws-amplify/auth'
 
-const PlaceholderIllustration = () => (
-  <View className="w-64 h-60 rounded-2xl bg-zinc-100"/>
-);
+import CoffeCup from '@/assets/illustrations/CoffeCup.svg'
+import { setAuthState } from '@/store/slices/authSlice'
 
 export default function SignInScreen() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const router = useRouter();
-  const dispatch = useDispatch();
+  const router = useRouter()
+  const dispatch = useDispatch()
 
-  const onSignIn = async () => {
-    const emailTrimmed = email;
-    const pwd = password;
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
-    if (!emailTrimmed || !pwd) {
-      alert("Please enter both email and password.");
-      return;
-    }
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isAuthed, setIsAuthed] = useState(false) // used to gate routing until session/tokens are set
+
+  const emailTrimmed = useMemo(
+    () => (email ?? '').trim().toLowerCase(),
+    [email]
+  )
+  const canSubmit = !!emailTrimmed && !!password && !isSubmitting
+
+  // Prevent double taps / concurrent sign-in
+  const inFlightRef = useRef(false)
+
+  const routeToSignUp = useCallback(() => router.replace('/signUp'), [router])
+  const routeToForgot = useCallback(
+    () => router.replace('/forgotPassword'),
+    [router]
+  )
+
+  const finishSignedIn = useCallback(
+    async (fallbackSub: string) => {
+      // Force refresh ensures tokens are actually minted/available right after signIn
+      const session = await fetchAuthSession({ forceRefresh: true })
+
+      const accessToken = session.tokens?.accessToken?.toString() ?? null
+      const idToken = session.tokens?.idToken?.toString() ?? null
+      const token = accessToken ?? idToken
+
+      if (!token) throw new Error('Signed in but missing token')
+
+      dispatch(
+        setAuthState({
+          user: { sub: session.userSub ?? fallbackSub },
+          token,
+          isLoggedIn: true,
+          payload: session.tokens?.idToken?.payload,
+        })
+      )
+
+      // ✅ Gate routing until Redux state is updated and tokens exist
+      setIsAuthed(true)
+    },
+    [dispatch]
+  )
+
+  const onSignIn = useCallback(async () => {
+    if (!canSubmit) return
+    if (inFlightRef.current) return
+    inFlightRef.current = true
 
     try {
-      // 1) Attempt sign in
+      setIsSubmitting(true)
 
-      const res = await signIn({ username: emailTrimmed, password: pwd,
-                                              options: { authFlowType: "USER_PASSWORD_AUTH" } });
-      console.log("[Auth] signIn:", res);
-
-      // 2) If already signed in, fetch session and store
-      if (res.isSignedIn) {
-        const session = await fetchAuthSession();
-        console.log("[Auth] session:", session);
-        dispatch(
-          setAuthState({
-            user: (session as any)?.userSub ?? emailTrimmed,
-            isLoggedIn: true,
-          })
-        );
-        return;
+      if (!emailTrimmed || !password) {
+        alert('Please enter both email and password.')
+        return
       }
 
-      // 3) Basic next steps only (type-safe)
-      const step = res.nextStep?.signInStep;
-      console.log("[Auth] next step:", step, res.nextStep);
+      const res = await signIn({
+        username: emailTrimmed,
+        password,
+        options: { authFlowType: 'USER_PASSWORD_AUTH' },
+      })
 
-      switch (step) {
-        case "DONE":
-          // already signed in, no further action needed
-          console.log("[Auth] Already signed in.");
-          return;
-        case "CONFIRM_SIGN_UP":
-          // user must verify email
-          alert("Please verify your email to continue.");
-          router.replace({ pathname: "/verification", params: { type: "signup" } });
-          return;
+      console.log('[Auth] signIn:', res)
 
-        case "RESET_PASSWORD":
-          // user must reset password before signing in
-          alert("You need to reset your password.");
-          router.replace("/resetPassword");
-          return;
+      if (!res.isSignedIn) {
+        const step = res.nextStep?.signInStep
+        console.log('[Auth] next step:', step, res.nextStep)
 
-        default:
-          console.warn("[Auth] Unhandled basic next step:", step);
-          alert("Additional verification is required to complete sign in. Please contact support via contact@louistran.ca.");
-          return;
+        switch (step) {
+          case 'DONE':
+            // Uncommon, but keep identical handling
+            return
+
+          case 'CONFIRM_SIGN_UP':
+            alert('Please verify your email to continue.')
+            router.replace({
+              pathname: '/verification',
+              params: { type: 'signup', email: emailTrimmed },
+            })
+            return
+
+          default:
+            alert('Additional verification is required to complete sign in.')
+            return
+        }
       }
+
+      // ✅ Signed in: ensure tokens exist + set redux auth state
+      await finishSignedIn(emailTrimmed)
+
+      // ✅ Optional: you can route immediately here,
+      // but if your RootLayout guards already handle it, you can omit this.
+      // Keeping it explicit improves perceived responsiveness.
+      router.replace('/(app)')
     } catch (err: any) {
-      const name = err?.name || "UnknownError";
-      const message = err?.message || String(err);
-      console.error("[Auth] sign in error:", { name, message, err });
+      const name = err?.name || 'UnknownError'
+      const message = err?.message || String(err)
+      console.error('[Auth] sign in error:', { name, message, err })
 
-      // basic, friendly mapping
-      let friendly = "Failed to sign in. Please try again.";
-      if (name === "UserNotFoundException" || name === "UserNotFound") {
-        friendly = "No account found for this email.";
-      } else if (name === "NotAuthorizedException" || name === "NotAuthorized") {
-        friendly = "Incorrect email or password.";
-      } else if (name === "UserNotConfirmedException" || name === "UserNotConfirmed") {
-        friendly = "Your account isn’t confirmed yet. Check your email for the code.";
+      let friendly = 'Failed to sign in. Please try again.'
+      if (name === 'UserNotFoundException' || name === 'UserNotFound') {
+        friendly = 'No account found for this email.'
+      } else if (
+        name === 'NotAuthorizedException' ||
+        name === 'NotAuthorized'
+      ) {
+        friendly = 'Incorrect email or password.'
+      } else if (
+        name === 'UserNotConfirmedException' ||
+        name === 'UserNotConfirmed'
+      ) {
+        friendly =
+          'Your account isn’t confirmed yet. Check your email for the code.'
       }
 
-      alert(friendly);
+      alert(friendly)
+    } finally {
+      setIsSubmitting(false)
+      inFlightRef.current = false
     }
-  };
+  }, [canSubmit, emailTrimmed, password, finishSignedIn, router])
 
-  const onSignUp = () => {
-    router.replace("/signUp");
-  };
-
-  const onForgot = () => {
-    router.replace("/forgotPassword");
-  };
+  const showLoading = isSubmitting && !isAuthed
 
   return (
-    <SafeAreaView className="flex-1 bg-white w-full h-full">
-      {/* Anchor whole form to bottom */}
-      <KeyboardAvoidingView className="flex-1 w-full h-full" behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <SafeAreaView style={styles.safeArea}>
+      {/* Loading modal blocks touches and prevents the user from navigating mid-auth */}
+      <Modal transparent visible={showLoading} animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.modalText}>Signing you in…</Text>
+          </View>
+        </View>
+      </Modal>
 
-          <View className="flex-1">
-            <View className="flex-1 px-8">
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.root}>
+            <View style={styles.illustrationContainer}>
               <CoffeCup
                 width="100%"
-                height="60%"                   // tweak (50–70%) to taste
-                preserveAspectRatio="xMidYMax meet" // bottom-align inside its box
+                height="60%"
+                preserveAspectRatio="xMidYMax meet"
               />
             </View>
-            <View className="flex-1 w-full justify-end items-center px-8 py-8 gap-8">
-              <View className="w-full gap-4">
-                <View className={"flex-row items-center"}>
-                  <Text className='text-2xl font-bold text-primary'>Sign in </Text>
-                  <Text className='text-2xl font-bold text-black'>to heal your mind!!</Text>
-                </View>
-                <View>
-                  <Text className='text-xl text-black'>Don't have an account yet?</Text>
-                  <TouchableOpacity onPress={onSignUp}>
-                    <Text className='text-xl text-[#FF0000]'>Sign up here</Text>
-                  </TouchableOpacity>
 
+            <View style={styles.formContainer}>
+              <View style={styles.headerBlock}>
+                <View style={styles.titleRow}>
+                  <Text style={styles.titlePrimary}>Sign in </Text>
+                  <Text style={styles.titleBlack}>to heal your mind!!</Text>
+                </View>
+
+                <View>
+                  <Text style={styles.subtitleText}>
+                    Don&apos;t have an account yet?
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.selfStart}
+                    onPress={routeToSignUp}
+                    disabled={isSubmitting}
+                  >
+                    <Text style={styles.signUpLink}>Sign up here</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-              <View className="w-full gap-2">
-                <View className="w-full items-start">
-                  <Text className="text-xl font-medium">Email address</Text>
+
+              <View style={styles.fieldBlock}>
+                <View style={styles.fieldLabelRow}>
+                  <Text style={styles.fieldLabel}>Email address</Text>
                 </View>
-                <View className="w-full h-12 justify-center items-start bg-zinc-100 rounded-2xl px-4">
-                  <TextInput value={email} onChangeText={setEmail} placeholder="Your email address"/>
+                <View style={styles.inputOuter}>
+                  <TextInput
+                    style={styles.input}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="Your email address"
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    textContentType="emailAddress"
+                    editable={!isSubmitting}
+                    returnKeyType="next"
+                  />
                 </View>
-              </View><View className="w-full gap-2">
-              <View className="w-full items-start">
-                <Text className="text-xl font-medium">Password</Text>
               </View>
-              <View className="w-full h-12 justify-center items-start bg-zinc-100 rounded-2xl px-4">
-                <TextInput value={password} onChangeText={setPassword} placeholder="********"/>
+
+              <View style={styles.fieldBlock}>
+                <View style={styles.fieldLabelRow}>
+                  <Text style={styles.fieldLabel}>Password</Text>
+                </View>
+                <View style={styles.inputOuter}>
+                  <TextInput
+                    style={styles.input}
+                    secureTextEntry
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="********"
+                    textContentType="password"
+                    editable={!isSubmitting}
+                    returnKeyType="done"
+                    onSubmitEditing={onSignIn}
+                  />
+                </View>
               </View>
-            </View>
-              <TouchableOpacity className="w-full items-end justify-center bg-blue" onPress={onForgot}>
-                <Text className="text-medium font-bold text-black opacity-50">
-                  Forgot password
-                </Text>
+
+              <TouchableOpacity
+                style={styles.forgotRow}
+                onPress={routeToForgot}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.forgotText}>Forgot password</Text>
               </TouchableOpacity>
-              <TouchableOpacity className="w-full h-12 items-center justify-center bg-primary rounded-[32px]"
-                                onPress={onSignIn} disabled={!email || !password}>
-                <Text className="text-xl font-medium text-white">Sign in</Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.signInBtn,
+                  (!canSubmit || isSubmitting) && styles.signInBtnDisabled,
+                ]}
+                onPress={onSignIn}
+                disabled={!canSubmit}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator />
+                ) : (
+                  <Text style={styles.signInBtnText}>Sign in</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
+  )
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+  },
+  keyboardAvoid: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  root: {
+    flex: 1,
+  },
+
+  illustrationContainer: {
+    flex: 1,
+    paddingHorizontal: 32,
+  },
+
+  formContainer: {
+    width: '100%',
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 32,
+    paddingVertical: 32,
+    rowGap: 32,
+  },
+
+  headerBlock: {
+    width: '100%',
+    rowGap: 16,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  titlePrimary: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0B5FFF',
+  },
+  titleBlack: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  subtitleText: {
+    fontSize: 20,
+    color: '#000000',
+  },
+  selfStart: {
+    alignSelf: 'flex-start',
+  },
+  signUpLink: {
+    fontSize: 20,
+    color: '#FF0000',
+  },
+
+  fieldBlock: {
+    width: '100%',
+    rowGap: 8,
+  },
+  fieldLabelRow: {
+    width: '100%',
+    alignItems: 'flex-start',
+  },
+  fieldLabel: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: '#000000',
+  },
+
+  inputOuter: {
+    height: 48,
+    width: '100%',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    borderRadius: 16,
+    backgroundColor: '#F4F4F5',
+    paddingHorizontal: 16,
+  },
+  input: {
+    height: '100%',
+    width: '100%',
+    color: '#000000',
+  },
+
+  forgotRow: {
+    width: '100%',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  forgotText: {
+    fontWeight: '700',
+    color: '#000000',
+    opacity: 0.5,
+  },
+
+  signInBtn: {
+    height: 48,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 32,
+    backgroundColor: '#0B5FFF',
+  },
+  signInBtnDisabled: {
+    opacity: 0.6,
+  },
+  signInBtnText: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+
+  // Loading modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    alignItems: 'center',
+    rowGap: 12,
+  },
+  modalText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+  },
+})

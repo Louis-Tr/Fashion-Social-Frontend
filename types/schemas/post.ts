@@ -1,13 +1,36 @@
-import {z} from "zod";
-import {UserSchema} from "./user";
+import { z } from 'zod'
+
+export const UserInfoSchema = z.object({
+  userId: z.string(),
+  displayName: z.string(),
+  handle: z.string(),
+  avatarKey: z.string().nullable(),
+})
+
+export const ItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  mediaUrl: z.string().nullable(),
+})
+
+export const MediaSchema = z.object({
+  mediaId: z.string(),
+  mediaUrl: z.string(), // backend type says string (not nullable)
+  index: z.number(),
+  items: z.array(ItemSchema).nullable().optional(),
+})
 
 export const PostSchema = z.object({
   id: z.string(),
-  userInfo: UserSchema,
+  userInfo: UserInfoSchema,
   caption: z.string().nullable(),
-  reactions: z.number(),
-  mediaUrls: z.array(z.string()),
-  createdAt: z.string(),
-});
+  isReacted: z.boolean(),
+  reactionsCount: z.number(),
+  commentsCount: z.number(),
+  visibility: z.enum(['public', 'followers', 'private']),
+  created_at: z.string(),
+  updated_at: z.string(),
+  medias: z.array(MediaSchema),
+})
 
-export type Post = z.infer<typeof PostSchema>;
+export type Post = z.infer<typeof PostSchema>

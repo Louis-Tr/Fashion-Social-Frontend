@@ -1,26 +1,26 @@
 // store/slices/loadingSlice.ts
-import { createSlice } from "@reduxjs/toolkit";
+import { createSlice } from '@reduxjs/toolkit'
 
 interface LoadingState {
-  global: boolean;
+  global: boolean
 }
 
 const initialState: LoadingState = {
   global: false,
-};
+}
 
 const loadingSlice = createSlice({
-  name: "loading",
+  name: 'loading',
   initialState,
   reducers: {
     startLoading: (state) => {
-      state.global = true;
+      state.global = true
     },
     stopLoading: (state) => {
-      state.global = false;
+      state.global = false
     },
   },
-});
+})
 
-export const { startLoading, stopLoading } = loadingSlice.actions;
-export default loadingSlice.reducer;
+export const { startLoading, stopLoading } = loadingSlice.actions
+export default loadingSlice.reducer

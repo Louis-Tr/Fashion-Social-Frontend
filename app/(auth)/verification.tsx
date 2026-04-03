@@ -1,213 +1,412 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
-    View,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    KeyboardAvoidingView,
-    Platform,
-    Keyboard,
-    TouchableWithoutFeedback,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import CoffeCup from "@/assets/illustrations/CoffeCup.svg";
-import {useDispatch} from "react-redux";
-import { setAuthState } from "@/store/slices/authSlice";
-import {confirmSignUp, resendSignUpCode, resetPassword} from "@aws-amplify/auth"; // Adjust import based on your store structure
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
+  StyleSheet,
+  Modal,
+  ActivityIndicator,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import CoffeCup from '@/assets/illustrations/CoffeCup.svg'
+import { confirmSignUp, resendSignUpCode } from 'aws-amplify/auth'
+
+const LEN = 6
+const RESEND_SECONDS = 30
 
 export default function VerificationScreen() {
-    const { type, email } = useLocalSearchParams<{ type?: string, email?: string }>(); // "signup" or "recovery"
-    const router = useRouter();
-    const [submitting, setSubmitting] = useState(false);
-    const [resending, setResending] = useState(false);
-    const dispatch = useDispatch();
+  const { email } = useLocalSearchParams<{ email?: string }>()
+  const router = useRouter()
 
-    const [code, setCode] = useState(["", "", "", "", "", ""]); // 6-digit code input
-    const [timer, setTimer] = useState(30); // countdown seconds
+  const [submitting, setSubmitting] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [timer, setTimer] = useState(RESEND_SECONDS)
 
-    const titleText =
-      type === "signup" ? "Verify your email" : "Verify password reset";
-    const descText =
-      type === "signup"
-        ? "Enter the sign up code sent to your email"
-        : "Enter the recovery code sent to your email";
+  const [code, setCode] = useState<string[]>(() => Array(LEN).fill(''))
+  const inputRefs = useRef<Array<TextInput | null>>([])
 
-    const onSubmit = async () => {
-        const codeStr = code.join("").trim(); // e.g., "1234" or "123456"
-        if (!codeStr || codeStr.length < 4) {
-            alert("Please enter the verification code.");
-            return;
+  const emailStr = useMemo(
+    () =>
+      String(email ?? '')
+        .trim()
+        .toLowerCase(),
+    [email]
+  )
+  const codeStr = useMemo(() => code.join(''), [code])
+  const canSubmit = codeStr.trim().length === LEN && !!emailStr && !submitting
+  const showLoading = submitting || resending
+
+  const focus = useCallback((i: number) => {
+    inputRefs.current[i]?.focus()
+  }, [])
+
+  const onChange = useCallback(
+    (t: string, i: number) => {
+      const d = t.replace(/\D/g, '').slice(-1)
+
+      setCode((prev) => {
+        const next = [...prev]
+        next[i] = d
+        return next
+      })
+
+      if (d && i < LEN - 1) focus(i + 1)
+    },
+    [focus]
+  )
+
+  const onKeyPress = useCallback(
+    (e: any, i: number) => {
+      // Backspace: if current is empty, move left and clear previous
+      if (e?.nativeEvent?.key !== 'Backspace') return
+      setCode((prev) => {
+        const next = [...prev]
+        if (next[i]) {
+          next[i] = ''
+          return next
         }
-        if (!email) {
-            console.error("[Verify] Missing email in params");
-            alert("Something went wrong. Please go back and try again.");
-            return;
+        if (i > 0) {
+          next[i - 1] = ''
+          requestAnimationFrame(() => focus(i - 1))
         }
+        return next
+      })
+    },
+    [focus]
+  )
 
-        try {
-            setSubmitting(true);
-            if (type === "signup") {
-                console.log("[Verify] Confirming sign up for:", email, "code:", codeStr);
-                await confirmSignUp({ username: String(email), confirmationCode: codeStr });
+  const onSubmit = useCallback(async () => {
+    const finalCode = codeStr.trim()
 
-                // Success — you can send them to sign-in (recommended),
-                // or auto sign them in if you enabled autoSignIn in your pool.
-                alert("Email verified. Please sign in.");
-                router.replace("/signIn");
-                // If you really want to set logged-in state immediately (not typical here):
-                // dispatch(setAuthState({ user: String(email), isLoggedIn: true }));
-                return;
-            }
+    if (finalCode.length !== LEN) {
+      alert(`Please enter the ${LEN}-digit verification code.`)
+      return
+    }
+    if (!emailStr) {
+      alert('Missing email. Please go back and try again.')
+      return
+    }
 
-            // Password recovery flow:
-            // We don't confirm here, because confirmResetPassword requires the *new password*.
-            // Pass the code + email to the reset screen so you can finish there.
-            console.log("[Verify] Code verified for recovery (defer confirm to reset screen).");
-            router.replace({
-                pathname: "/resetPassword",
-                params: { email: String(email), code: codeStr },
-            });
-        } catch (err: any) {
-            const name = err?.name || "UnknownError";
-            const message = err?.message || String(err);
-            console.error("[Verify] error:", { name, message, err });
+    try {
+      setSubmitting(true)
 
-            let friendly = "Verification failed. Please check the code and try again.";
-            if (name === "CodeMismatchException" || name === "CodeMismatch") {
-                friendly = "The code is incorrect. Please try again.";
-            } else if (name === "ExpiredCodeException" || name === "ExpiredCode") {
-                friendly = "This code has expired. Please resend a new code.";
-            } else if (name === "LimitExceededException" || name === "TooManyRequestsException") {
-                friendly = "Too many attempts. Please wait a moment and try again.";
-            }
-            alert(friendly);
-        } finally {
-            setSubmitting(false);
-        }
-    };
+      await confirmSignUp({
+        username: emailStr,
+        confirmationCode: finalCode,
+      })
 
+      alert('Email verified. Please sign in.')
+      router.replace('/signIn')
+    } catch (err: any) {
+      const name = err?.name || 'UnknownError'
+      const message = String(err?.message || err || '')
+      console.error('[Verify] confirm error:', { name, message, err })
 
-    const onResend = async () => {
-        if (timer > 0 || resending) return; // cooldown or already sending
-        if (!email) {
-            alert("Missing email. Please go back and enter your email again.");
-            return;
-        }
+      // Treat "already confirmed" as success
+      const alreadyConfirmed =
+        name === 'NotAuthorizedException' &&
+        /CONFIRMED|already.*confirmed|current status/i.test(message)
 
-        try {
-            setResending(true);
-            console.log("[Verify] Resend requested for:", email, "type:", type);
+      if (alreadyConfirmed) {
+        alert('Email already verified. Please sign in.')
+        router.replace('/signIn')
+        return
+      }
 
-            if (type === "signup") {
-                await resendSignUpCode({ username: String(email) });
-            } else {
-                // recovery flow uses resetPassword to trigger a new code
-                await resetPassword({ username: String(email) });
-            }
+      let friendly = 'Verification failed. Please check the code and try again.'
+      if (name === 'CodeMismatchException' || name === 'CodeMismatch') {
+        friendly = 'The code is incorrect. Please try again.'
+      } else if (name === 'ExpiredCodeException' || name === 'ExpiredCode') {
+        friendly = 'This code has expired. Please resend a new code.'
+      } else if (
+        name === 'LimitExceededException' ||
+        name === 'TooManyRequestsException'
+      ) {
+        friendly = 'Too many attempts. Please wait a moment and try again.'
+      } else if (name === 'UserNotFoundException' || name === 'UserNotFound') {
+        friendly = 'No account found for this email.'
+      }
 
-            alert("A new verification code has been sent.");
-            setTimer(30); // restart countdown only on success
-        } catch (err: any) {
-            const name = err?.name || "UnknownError";
-            const message = err?.message || String(err);
-            console.error("[Verify] resend error:", { name, message, err });
+      alert(friendly)
+    } finally {
+      setSubmitting(false)
+    }
+  }, [codeStr, emailStr, router])
 
-            let friendly = "Could not resend the code. Please try again.";
-            if (name === "TooManyRequestsException" || name === "LimitExceededException") {
-                friendly = "Too many requests. Please wait a moment and try again.";
-            } else if (name === "UserNotFoundException" || name === "UserNotFound") {
-                friendly = "No account found for this email.";
-            }
-            alert(friendly);
-        } finally {
-            setResending(false);
-        }
-    };
+  const onResend = useCallback(async () => {
+    if (timer > 0 || resending) return
+    if (!emailStr) {
+      alert('Missing email. Please go back and enter your email again.')
+      return
+    }
 
-    const updateCode = (text: string, index: number) => {
-        const newCode = [...code];
-        newCode[index] = text.replace(/[^0-9]/g, "").slice(0, 1);
-        setCode(newCode);
-    };
+    try {
+      setResending(true)
+      await resendSignUpCode({ username: emailStr })
+      alert('A new verification code has been sent.')
+      setTimer(RESEND_SECONDS)
+    } catch (err: any) {
+      const name = err?.name || 'UnknownError'
+      console.error('[Verify] resend error:', err)
 
-    // Countdown effect
-    useEffect(() => {
-        if (timer <= 0) return;
-        const interval = setInterval(() => setTimer((t) => t - 1), 1000);
-        return () => clearInterval(interval);
-    }, [timer]);
+      let friendly = 'Could not resend the code. Please try again.'
+      if (
+        name === 'TooManyRequestsException' ||
+        name === 'LimitExceededException'
+      ) {
+        friendly = 'Too many requests. Please wait a moment and try again.'
+      } else if (name === 'UserNotFoundException' || name === 'UserNotFound') {
+        friendly = 'No account found for this email.'
+      }
 
-    return (
-      <SafeAreaView className="flex-1 bg-white w-full h-full">
-          <KeyboardAvoidingView
-            className="flex-1 w-full h-full"
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-                  <View className="flex-1 px-8 py-8 gap-8">
-                      {/* Illustration */}
-                      <View className="flex-1 justify-center items-center">
-                          <CoffeCup
-                            width="100%"
-                            height="60%"
-                            preserveAspectRatio="xMidYMax meet"
-                          />
-                      </View>
+      alert(friendly)
+    } finally {
+      setResending(false)
+    }
+  }, [emailStr, resending, timer])
 
-                      {/* Texts */}
-                      <View className="gap-4">
-                          <Text className="text-primary text-2xl font-bold">{titleText}</Text>
-                          <Text className="text-black text-base font-normal">{descText}</Text>
-                          <View className="flex-row items-center gap-1">
-                              <Text className="text-black text-base font-bold">Didn’t receive?</Text>
-                              <TouchableOpacity onPress={onResend} disabled={timer > 0}>
-                                  <Text
-                                    className={`text-base font-normal ${
-                                      timer > 0 ? "text-black" : "text-red"
-                                    }`}
-                                  >
-                                      Send again
-                                  </Text>
-                              </TouchableOpacity>
-                          </View>
-                      </View>
+  useEffect(() => {
+    if (timer <= 0) return
+    const interval = setInterval(() => setTimer((t) => t - 1), 1000)
+    return () => clearInterval(interval)
+  }, [timer])
 
-                      {/* Resend timer */}
-                      {timer > 0 && (
-                        <Text className="text-black text-base font-medium">
-                            Resend in {timer}
-                        </Text>
-                      )}
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      {/* Loading modal */}
+      <Modal transparent visible={showLoading} animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.modalText}>
+              {resending ? 'Sending code…' : 'Verifying…'}
+            </Text>
+          </View>
+        </View>
+      </Modal>
 
-                      {/* Code Inputs */}
-                      <View className="flex-row justify-between px-4 items-center">
-                          {code.map((digit, i) => (
-                            <View className="w-12 h-12 justify-center items-center text-lg bg-white rounded-2xl border border-black"><TextInput
-                              key={i}
-                              value={digit}
-                              onChangeText={(t) => updateCode(t, i)}
-                              keyboardType="numeric"
-                              maxLength={1}
-                              className="text-center w-full h-full"
-                            />
-                            </View>
-                          ))}
-                      </View>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.container}>
+            <View style={styles.illustration}>
+              <CoffeCup
+                width="100%"
+                height="60%"
+                preserveAspectRatio="xMidYMax meet"
+              />
+            </View>
 
-                      {/* Submit */}
-                      <TouchableOpacity
-                        className="w-full h-12 bg-indigo-400 rounded-[32px] items-center justify-center"
-                        onPress={onSubmit}
-                        disabled={submitting}
-                      >
-                          <Text className="text-white text-xl font-medium">
-                              {submitting ? "Verifying…" : "Submit"}
-                          </Text>
-                      </TouchableOpacity>
-                  </View>
-              </TouchableWithoutFeedback>
-          </KeyboardAvoidingView>
-      </SafeAreaView>
-    );
+            <View style={styles.textBlock}>
+              <Text style={styles.title}>Verify your email</Text>
+              <Text style={styles.desc}>
+                Enter the sign up code sent to your email
+              </Text>
+
+              <View style={styles.resendRow}>
+                <Text style={styles.didntReceive}>Didn’t receive?</Text>
+                <TouchableOpacity
+                  onPress={onResend}
+                  disabled={timer > 0 || resending}
+                >
+                  <Text
+                    style={[
+                      styles.sendAgain,
+                      timer > 0
+                        ? styles.sendAgainDisabled
+                        : styles.sendAgainActive,
+                    ]}
+                  >
+                    Send again
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {timer > 0 && (
+              <Text style={styles.timerText}>Resend in {timer}</Text>
+            )}
+
+            {/* Code Inputs */}
+            <View style={styles.codeRow}>
+              {code.map((v, i) => (
+                <View key={i} style={styles.codeCell}>
+                  <TextInput
+                    ref={(el) => {
+                      inputRefs.current[i] = el
+                    }}
+                    value={v}
+                    onChangeText={(t) => onChange(t, i)}
+                    onKeyPress={(e) => onKeyPress(e, i)}
+                    keyboardType="number-pad"
+                    maxLength={1}
+                    blurOnSubmit={false}
+                    editable={!submitting && !resending}
+                    style={styles.codeInput}
+                    autoFocus={i === 0}
+                  />
+                </View>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.submitBtn,
+                (!canSubmit || submitting) && styles.submitBtnDim,
+              ]}
+              onPress={onSubmit}
+              disabled={!canSubmit}
+            >
+              <Text style={styles.submitBtnText}>Submit</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  )
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+  },
+  keyboardAvoid: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+
+  container: {
+    flex: 1,
+    paddingHorizontal: 32,
+    paddingVertical: 32,
+    rowGap: 32,
+  },
+
+  illustration: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  textBlock: {
+    rowGap: 16,
+  },
+
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0B5FFF',
+  },
+
+  desc: {
+    fontSize: 16,
+    fontWeight: '400',
+    color: '#000000',
+  },
+
+  resendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 4,
+  },
+
+  didntReceive: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000000',
+  },
+
+  sendAgain: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  sendAgainDisabled: {
+    color: '#000000',
+  },
+  sendAgainActive: {
+    color: '#FF0000',
+  },
+
+  timerText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#000000',
+  },
+
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+
+  codeCell: {
+    height: 48,
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#000000',
+    backgroundColor: '#FFFFFF',
+  },
+
+  codeInput: {
+    height: '100%',
+    width: '100%',
+    textAlign: 'center',
+    color: '#000000',
+  },
+
+  submitBtn: {
+    height: 48,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 32,
+    backgroundColor: '#818CF8',
+  },
+  submitBtnDim: {
+    opacity: 0.6,
+  },
+
+  submitBtnText: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    alignItems: 'center',
+    rowGap: 12,
+  },
+  modalText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+  },
+})

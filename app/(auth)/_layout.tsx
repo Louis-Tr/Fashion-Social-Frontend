@@ -1,10 +1,10 @@
-import { Stack } from "expo-router";
-import { useSelector } from "react-redux";
-import { RootState } from "@/store/store";
+import { Stack } from 'expo-router'
+import { useSelector } from 'react-redux'
+import { RootState } from '@/store/store'
 
 export default function Layout() {
-  const auth = useSelector((state: RootState) => state.auth);
-  console.log("Auth state:", auth);
+  const auth = useSelector((state: RootState) => state.auth)
+  console.log('Auth state:', auth)
   return (
     <Stack screenOptions={{ headerShown: false }}>
       {/* Protected stack for auth.isFirstLaunch true */}
@@ -12,7 +12,7 @@ export default function Layout() {
         <Stack.Screen
           name="index"
           options={{
-            title: "Welcome Screen",
+            title: 'Welcome Screen',
             headerBackVisible: false,
             gestureEnabled: false,
           }}
@@ -24,7 +24,7 @@ export default function Layout() {
         <Stack.Screen
           name="signIn"
           options={{
-            title: "Sign In",
+            title: 'Sign In',
             headerBackVisible: false,
             gestureEnabled: false,
           }}
@@ -32,7 +32,7 @@ export default function Layout() {
         <Stack.Screen
           name="signUp"
           options={{
-            title: "Sign Up",
+            title: 'Sign Up',
             headerBackVisible: false,
             gestureEnabled: false,
           }}
@@ -40,15 +40,7 @@ export default function Layout() {
         <Stack.Screen
           name="forgotPassword"
           options={{
-            title: "Forgot Password",
-            headerBackVisible: true,
-            gestureEnabled: true,
-          }}
-        />
-        <Stack.Screen
-          name="resetPassword"
-          options={{
-            title: "Reset Password",
+            title: 'Forgot Password',
             headerBackVisible: true,
             gestureEnabled: true,
           }}
@@ -56,12 +48,20 @@ export default function Layout() {
         <Stack.Screen
           name="verification"
           options={{
-            title: "Verification",
+            title: 'Verification',
+            headerBackVisible: false,
+            gestureEnabled: false,
+          }}
+        />
+        <Stack.Screen
+          name="test"
+          options={{
+            title: 'Test',
             headerBackVisible: false,
             gestureEnabled: false,
           }}
         />
       </Stack.Protected>
     </Stack>
-  );
+  )
 }
