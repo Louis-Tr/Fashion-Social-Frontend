@@ -1,39 +1,7 @@
 // src/services/wardrobe/api.ts
 import { z } from 'zod'
-import {
-  AddItemPhotoReq,
-  AddPhotoRes,
-  AddItemToCollectionReq,
-  AddStyleToItemReq,
-  ApiErrSchema,
-  ApiOkSchema,
-  CreateCategoryReq,
-  CreateCategoryRes,
-  CreateCollectionReq,
-  CreateCollectionRes,
-  CreateStyleReq,
-  CreateStyleRes,
-  CreateWardrobeItemReq,
-  CreateItemRes,
-  ListCategoriesRes,
-  ListCollectionsRes,
-  ListItemsRes,
-  ListPhotosRes,
-  ListStylesRes,
-  UpdateCategoryReq,
-  UpdateCategoryRes,
-  UpdateCollectionItemReq,
-  UpdateCollectionReq,
-  UpdateCollectionRes,
-  UpdateItemPhotoReq,
-  UpdatePhotoRes,
-  UpdateStyleReq,
-  UpdateStyleRes,
-  UpdateWardrobeItemReq,
-  UpdateItemRes,
-  UUID,
-} from './schemas'
-import { BASE_URL } from '@/constants/Url'
+import { ApiErrSchema, CreateWardrobeItemReq } from './schemas'
+import { API_BASE_URL } from '@/constants/Url'
 import { prepareFileForUpload, uploadToS3 } from '@/services/media'
 import { ImagePickerAsset } from 'expo-image-picker'
 import { getUser } from '@/utils/getUser'
@@ -56,8 +24,8 @@ export type WardrobeApiConfig = {
 
 function defaultBaseUrl() {
   // Safe default: `${BASE_URL}/wardrobe`
-  if (typeof BASE_URL === 'string' && BASE_URL.length > 0)
-    return `${BASE_URL}/wardrobe`
+  if (typeof API_BASE_URL === 'string' && API_BASE_URL.length > 0)
+    return `${API_BASE_URL}/wardrobe`
   // Fallback: relative mount (useful in web)
   return '/wardrobe'
 }

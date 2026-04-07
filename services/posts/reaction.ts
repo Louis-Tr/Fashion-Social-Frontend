@@ -1,11 +1,10 @@
 import { getToken } from '@/utils/token'
-import { PostReactionBody } from '@/services/posts/schemas'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 
 export async function reactToPost(postId: string) {
   const token = getToken()
 
-  const res = await fetch(`${BASE_URL}/post/${postId}/reaction`, {
+  const res = await fetch(`${API_BASE_URL}/post/${postId}/reaction`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -28,7 +27,7 @@ export async function toggleCommentReaction(
   const token = getToken()
 
   const res = await fetch(
-    `${BASE_URL}/post/${postId}/comment/${commentId}/reaction`,
+    `${API_BASE_URL}/post/${postId}/comment/${commentId}/reaction`,
     {
       method: 'POST',
       headers: {

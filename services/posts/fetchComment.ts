@@ -1,4 +1,4 @@
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import { getToken } from '@/utils/token'
 import type { GetCommentResponse } from '@/types/schemas/comment'
 
@@ -14,7 +14,7 @@ export async function fetchComment(
   if (cursor) params.set('cursor', cursor)
 
   const res = await fetch(
-    `${BASE_URL}/post/${postId}/comment?${params.toString()}`,
+    `${API_BASE_URL}/post/${postId}/comment?${params.toString()}`,
     {
       method: 'GET',
       headers: {
@@ -44,7 +44,7 @@ export async function fetchCommentReplies(
   if (cursor) params.set('cursor', cursor)
 
   const res = await fetch(
-    `${BASE_URL}/post/${postId}/comment/${commentId}/reply?${params.toString()}`,
+    `${API_BASE_URL}/post/${postId}/comment/${commentId}/reply?${params.toString()}`,
     {
       method: 'GET',
       headers: {

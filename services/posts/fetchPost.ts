@@ -1,7 +1,6 @@
 import { getToken } from '@/utils/token'
-import { BASE_URL } from '@/constants/Url'
-import { z } from 'zod'
-import { PostSchema, Post } from '@/types/schemas/post'
+import { API_BASE_URL } from '@/constants/Url'
+import { Post, PostSchema } from '@/types/schemas/post'
 
 export type PostWithMediaRow = {
   id: string
@@ -31,7 +30,7 @@ export async function fetchPost(id: string): Promise<Post> {
   const token = await getToken()
   if (!token) throw new Error('Missing access token')
 
-  const url = `${BASE_URL}/post/${id}`
+  const url = `${API_BASE_URL}/post/${id}`
 
   const res = await fetch(url, {
     method: 'GET',

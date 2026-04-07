@@ -1,10 +1,10 @@
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import { getToken } from '@/utils/token'
 import { z } from 'zod'
 import { ImagePickerAsset } from 'expo-image-picker'
 import { prepareFileForUpload, uploadToS3 } from '@/services/story/helpers'
 
-const url = BASE_URL + '/story'
+const url = API_BASE_URL + '/story'
 
 export const CreateStorySchema = z.object({
   tags: z.array(z.string()),

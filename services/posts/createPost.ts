@@ -1,7 +1,7 @@
 // src/services/createPost.ts
 import { z } from 'zod'
 import { getToken } from '@/utils/token'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import { uploadToS3 } from '@/services/media'
 
 type AttachItemProps = {
@@ -137,7 +137,7 @@ export async function createPost(input: CreatePostInput) {
     throw new Error(`Invalid create post payload: ${msg}`)
   }
 
-  const res = await fetch(`${BASE_URL}/post`, {
+  const res = await fetch(`${API_BASE_URL}/post`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
