@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { getToken } from '@/utils/token'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 
 // Schema (unchanged)
 export const FetchUserPostResSchema = z.array(
@@ -24,8 +24,8 @@ export async function fetchUserPostsList(
   if (typeof offset === 'number') query.set('offset', String(offset))
 
   const url = query.toString()
-    ? `${BASE_URL}/user/${userId}/posts?${query.toString()}`
-    : `${BASE_URL}/user/${userId}/posts`
+    ? `${API_BASE_URL}/user/${userId}/posts?${query.toString()}`
+    : `${API_BASE_URL}/user/${userId}/posts`
 
   const res = await fetch(url, {
     method: 'GET',

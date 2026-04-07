@@ -1,12 +1,12 @@
 // src/services/feed/fetchFeed.ts
 import { AppDispatch, RootState } from '@/store/store'
 import {
-  setConversation,
   appendConversatation,
+  setConversation,
   setIsLoadingFeed,
 } from '@/store/slices/conversationSlice'
 import { z } from 'zod'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import { ConversationSchema } from '@/types/schemas/conversation'
 
 export const fetchConversations =
@@ -24,7 +24,7 @@ export const fetchConversations =
 
     try {
       const resp = await fetch(
-        `${BASE_URL}/message/conversations?${query}`, // ✅ append query
+        `${API_BASE_URL}/message/conversations?${query}`, // ✅ append query
         {
           method: 'GET',
           headers: {

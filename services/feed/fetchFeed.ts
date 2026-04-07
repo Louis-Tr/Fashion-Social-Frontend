@@ -1,13 +1,13 @@
 // src/services/feed/fetchFeed.ts
 import { AppDispatch, RootState } from '@/store/store'
 import {
-  setPosts,
   appendPosts,
-  setOffset,
   setIsLoadingFeed,
+  setOffset,
+  setPosts,
 } from '@/store/slices/postSlice'
-import { FeedReq, FeedRes } from './schemas'
-import { BASE_URL } from '@/constants/Url'
+import { FeedRes } from './schemas'
+import { API_BASE_URL } from '@/constants/Url'
 import { z } from 'zod'
 
 const UserInfoSchema = z.object({
@@ -60,7 +60,7 @@ export const fetchFeed =
 
     try {
       const resp = await fetch(
-        `${BASE_URL}/feed?${query}`, // ✅ append query
+        `${API_BASE_URL}/feed?${query}`, // ✅ append query
         {
           method: 'GET',
           headers: {

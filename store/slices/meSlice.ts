@@ -2,7 +2,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { fetchMe } from '@/services/users/fetchMe'
 import { z } from 'zod'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import { StoryType } from '@/components/StoryBar'
 import { RootState } from '@/store/store'
 
@@ -35,7 +35,7 @@ export const loadMe = createAsyncThunk<UserProfile, void, { state: RootState }>(
   async (_, { getState, rejectWithValue }) => {
     const { token } = getState().auth
     try {
-      const res = await fetch(`${BASE_URL}/user/me`, {
+      const res = await fetch(`${API_BASE_URL}/user/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
