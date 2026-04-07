@@ -12,6 +12,7 @@ import {
   Modal,
   Alert,
 } from 'react-native'
+import { signOut } from '@aws-amplify/auth'
 import { FlashList } from '@shopify/flash-list'
 import { useRouter } from 'expo-router'
 import { useDispatch, useSelector } from 'react-redux'
@@ -160,6 +161,16 @@ export default function MeProfileScreen() {
     Alert.alert('Edit Profile', 'Edit profile (placeholder)')
   }
 
+  const handleSignOut = async () => {
+    try {
+      setIsOptionsModalVisible(false)
+      await signOut()
+    } catch (error) {
+      Alert.alert('Sign out failed', 'Please try again.')
+      console.error(error)
+    }
+  }
+
   // Load me on mount
   useEffect(() => {
     if (meStatus === 'idle') {
@@ -242,7 +253,7 @@ export default function MeProfileScreen() {
         />
       )
     },
-    [ratioByUrl, posts]
+    [ratioByUrl]
   )
 
   // ───────────────────── TOP-LEVEL STATES ─────────────────────
@@ -445,6 +456,10 @@ export default function MeProfileScreen() {
               <Text style={styles.optionsItemText}>Share profile</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={styles.optionsItem} onPress={handleSignOut}>
+              <Text style={styles.optionsDangerText}>Sign out</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.optionsItem, styles.optionsCancel]}
               onPress={() => setIsOptionsModalVisible(false)}
@@ -610,6 +625,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   optionsItemText: { fontSize: 15 },
+  optionsDangerText: { fontSize: 15, color: '#DC2626', fontWeight: '600' },
   optionsCancel: { borderBottomWidth: 0, marginTop: 4 },
   optionsCancelText: { fontSize: 15, fontWeight: '600', textAlign: 'center' },
 })
