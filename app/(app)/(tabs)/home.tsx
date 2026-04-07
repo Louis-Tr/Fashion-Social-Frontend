@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react'
-import { View, Text, FlatList, Button, StyleSheet } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { View, Text, FlatList, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '@/store/store'
@@ -7,15 +7,12 @@ import Post from '@/components/Post'
 import CommentPanel from '@/components/CommentPanel'
 import { fetchFeed } from '@/services/feed'
 import { fetchComment } from '@/services/posts/fetchComment'
-import { signOut } from '@aws-amplify/auth'
-import { useRouter } from 'expo-router'
 import { Comment } from '@/types/comment'
 import StoryBar from '@/components/StoryBar'
 import { fetchStories } from '@/services/story/fetchStories'
 import { hideTabBar, showTabBar } from '@/store/slices/tabBarSlice'
 
 export default function HomeScreen() {
-  const router = useRouter()
   const dispatch = useDispatch<AppDispatch>()
   const { posts } = useSelector((state: RootState) => state.post)
   const { stories } = useSelector((state: RootState) => state.story)
@@ -63,10 +60,6 @@ export default function HomeScreen() {
     dispatch(fetchFeed())
   }
 
-  const handleSignOut = async () => {
-    await signOut()
-  }
-
   const onClose = () => {
     setFocusPost(null)
     setComments([])
@@ -74,8 +67,6 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <Button title="Sign Out" onPress={handleSignOut} />
-
       <FlatList
         data={posts}
         keyExtractor={(item) => item.id}
