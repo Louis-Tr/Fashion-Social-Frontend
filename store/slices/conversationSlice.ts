@@ -26,7 +26,8 @@ const conversationSlice = createSlice({
     appendConversatation: (state, action) => {
       const merged = [...state.conversations, ...action.payload]
       state.conversations = merged
-      state.beforeId = action.payload[-1].id
+      const last = action.payload.at(-1)
+      state.beforeId = last?.id ?? state.beforeId
     },
     setLast: (state, action: PayloadAction<string>) => {
       state.beforeId = action.payload

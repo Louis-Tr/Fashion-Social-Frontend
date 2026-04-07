@@ -11,6 +11,8 @@ import {
   StatusBar,
   Modal,
   Alert,
+  TextInput,
+  Switch,
 } from 'react-native'
 import { signOut } from '@aws-amplify/auth'
 import { FlashList } from '@shopify/flash-list'
@@ -24,6 +26,8 @@ import {
   FetchUserPostRes,
 } from '@/services/users/fetchUserPost'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { updateMyProfile } from '@/services/users/updateProfile'
+import { setMe } from '@/store/slices/meSlice'
 
 const LIMIT = 18
 
@@ -72,6 +76,7 @@ export default function MeProfileScreen() {
   const dispatch = useDispatch<any>()
 
   const me = useSelector((s: RootState) => s.me.me) as UserProfile | null
+  const token = useSelector((s: RootState) => s.auth.token) as string | null
   const meStatus = useSelector((s: RootState) => s.me.status) as
     | 'idle'
     | 'loading'
@@ -96,6 +101,12 @@ export default function MeProfileScreen() {
 
   // UI state for modals
   const [isOptionsModalVisible, setIsOptionsModalVisible] = useState(false)
+  const [isEditProfileVisible, setIsEditProfileVisible] = useState(false)
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editHandle, setEditHandle] = useState('')
+  const [editBio, setEditBio] = useState('')
+  const [editPrivate, setEditPrivate] = useState(false)
 
   const loadInitialPosts = async (userId: string) => {
     try {
@@ -158,7 +169,43 @@ export default function MeProfileScreen() {
   }
 
   const onPressActionButton = () => {
-    Alert.alert('Edit Profile', 'Edit profile (placeholder)')
+    if (!me) return
+    setEditName(me.displayName ?? '')
+    setEditHandle(me.handle ?? '')
+    setEditBio(me.bio ?? '')
+    setEditPrivate(Boolean(me.isPrivate))
+    setIsEditProfileVisible(true)
+  }
+
+  const handleSaveProfile = async () => {
+    if (!token || !me) {
+      Alert.alert('Error', 'You must be logged in to edit your profile.')
+      return
+    }
+
+    const payload = {
+      displayName: editName.trim(),
+      handle: editHandle.trim().replace(/^@+/, ''),
+      bio: editBio.trim(),
+      isPrivate: editPrivate,
+    }
+
+    if (!payload.displayName || !payload.handle) {
+      Alert.alert('Missing fields', 'Name and handle are required.')
+      return
+    }
+
+    try {
+      setIsSavingProfile(true)
+      const updated = await updateMyProfile(token, payload)
+      dispatch(setMe(updated))
+      setIsEditProfileVisible(false)
+      Alert.alert('Success', 'Your profile has been updated.')
+    } catch (e: any) {
+      Alert.alert('Update failed', e?.message ?? 'Failed to update profile.')
+    } finally {
+      setIsSavingProfile(false)
+    }
   }
 
   const handleSignOut = async () => {
@@ -202,6 +249,14 @@ export default function MeProfileScreen() {
     run()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.id, me?.avatarKey])
+
+  useEffect(() => {
+    if (!me) return
+    setEditName(me.displayName ?? '')
+    setEditHandle(me.handle ?? '')
+    setEditBio(me.bio ?? '')
+    setEditPrivate(Boolean(me.isPrivate))
+  }, [me])
 
   // ===== Precompute ratios for visible post thumbnails =====
   const visibleMediaUrls = useMemo(() => {
@@ -425,6 +480,69 @@ export default function MeProfileScreen() {
         }
       />
 
+      <Modal
+        visible={isEditProfileVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsEditProfileVisible(false)}
+      >
+        <View style={styles.editBackdrop}>
+          <View style={styles.editSheet}>
+            <Text style={styles.editTitle}>Edit Profile</Text>
+
+            <Text style={styles.editLabel}>Name</Text>
+            <TextInput
+              value={editName}
+              onChangeText={setEditName}
+              style={styles.editInput}
+              placeholder="Your display name"
+            />
+
+            <Text style={styles.editLabel}>Handle</Text>
+            <TextInput
+              value={editHandle}
+              onChangeText={setEditHandle}
+              style={styles.editInput}
+              autoCapitalize="none"
+              placeholder="@yourhandle"
+            />
+
+            <Text style={styles.editLabel}>Bio</Text>
+            <TextInput
+              value={editBio}
+              onChangeText={setEditBio}
+              style={[styles.editInput, styles.editBioInput]}
+              placeholder="Tell people about you"
+              multiline
+            />
+
+            <View style={styles.privacyRow}>
+              <Text style={styles.editLabel}>Private profile</Text>
+              <Switch value={editPrivate} onValueChange={setEditPrivate} />
+            </View>
+
+            <View style={styles.editActions}>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.editCancelButton]}
+                onPress={() => setIsEditProfileVisible(false)}
+                disabled={isSavingProfile}
+              >
+                <Text style={styles.actionButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.editSaveButton]}
+                onPress={handleSaveProfile}
+                disabled={isSavingProfile}
+              >
+                <Text style={styles.actionButtonText}>
+                  {isSavingProfile ? 'Saving...' : 'Save'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Top-right options modal */}
       <Modal
         visible={isOptionsModalVisible}
@@ -606,6 +724,58 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   emptyStateText: { color: '#666', textAlign: 'center' },
+
+  editBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  editSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    gap: 8,
+  },
+  editTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  editLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#444',
+  },
+  editInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  editBioInput: {
+    minHeight: 84,
+    textAlignVertical: 'top',
+  },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  editCancelButton: {
+    backgroundColor: '#fff',
+  },
+  editSaveButton: {
+    backgroundColor: '#F3F4F6',
+  },
 
   optionsBackdrop: {
     flex: 1,
