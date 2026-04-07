@@ -83,7 +83,9 @@ export default function HomeScreen() {
         onEndReached={handleLoadMore}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>Loading feed...</Text>
+          <Text style={styles.emptyText}>
+            No posts available right now, let&apos;s create some of your own.
+          </Text>
         }
         windowSize={7}
         initialNumToRender={4}
