@@ -18,6 +18,35 @@ import type { AppDispatch, RootState } from '@/store/store'
 import { urlFromKey } from '@/services/media/urlFromKey'
 import type { Conversation } from '@/types/schemas/conversation'
 
+function parseDate(value?: string | null): number {
+  if (!value) return Number.NaN
+  const parsed = new Date(value).getTime()
+  if (!Number.isNaN(parsed)) return parsed
+
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([+-])(\d{2})(?::?(\d{2}))?$/
+  )
+  if (!match) return Number.NaN
+
+  const [, y, m, d, hh, mm, ss, frac, sign, offsetHours, offsetMinutes] = match
+  const baseUtc = Date.UTC(
+    Number(y),
+    Number(m) - 1,
+    Number(d),
+    Number(hh),
+    Number(mm),
+    Number(ss),
+    frac ? Number(frac.slice(0, 3)) : 0
+  )
+  const offsetMs =
+    (Number(offsetHours) * 60 + Number(offsetMinutes ?? '0')) *
+    60 *
+    1000 *
+    (sign === '+' ? 1 : -1)
+
+  return baseUtc - offsetMs
+}
+
 export default function MessageListScreen() {
   const router = useRouter()
   const dispatch = useDispatch<AppDispatch>()
@@ -61,8 +90,9 @@ export default function MessageListScreen() {
 
       const lastMessageText = item.lastMessage?.content ?? 'No messages yet'
 
-      const time = item.lastMessage?.createdAt
-        ? new Date(item.lastMessage.createdAt).toLocaleTimeString([], {
+      const parsedTs = parseDate(item.lastMessage?.createdAt)
+      const time = !Number.isNaN(parsedTs)
+        ? new Date(parsedTs).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
           })
@@ -125,7 +155,14 @@ export default function MessageListScreen() {
     <SafeAreaView edges={['top']} style={styles.container}>
       <Text style={styles.headerTitle}>Fashion Talks</Text>
       <FlatList
-        data={conversations}
+        data={[...conversations].sort((a, b) => {
+          const aTs = parseDate(a.lastMessage?.createdAt)
+          const bTs = parseDate(b.lastMessage?.createdAt)
+          if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return bTs - aTs
+          if (!Number.isNaN(aTs)) return -1
+          if (!Number.isNaN(bTs)) return 1
+          return a.id.localeCompare(b.id)
+        })}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
