@@ -53,6 +53,9 @@ export const WebSocketProvider: React.FC<{
   enabled?: boolean
 }> = ({ children, enabled = true }) => {
   const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectAttemptRef = useRef(0)
+  const enabledRef = useRef(enabled)
 
   const [isConnected, setIsConnected] = useState(false)
   const [connectionReady, setConnectionReady] = useState(false) // handshake 1: READY
@@ -65,6 +68,9 @@ export const WebSocketProvider: React.FC<{
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId
   }, [activeConversationId])
+  useEffect(() => {
+    enabledRef.current = enabled
+  }, [enabled])
 
   const conversationReady = connectionReady && !!activeConversationId
 
@@ -144,11 +150,79 @@ export const WebSocketProvider: React.FC<{
     [sendJson]
   )
 
+  const connect = useCallback(() => {
+    if (!enabledRef.current) return
+
+    const existing = wsRef.current
+    if (
+      existing &&
+      (existing.readyState === WebSocket.OPEN ||
+        existing.readyState === WebSocket.CONNECTING)
+    ) {
+      return
+    }
+
+    const token = getToken()
+    if (!token) {
+      console.log('[WS] No access token – not connecting')
+      return
+    }
+
+    const url = `${WS_URL}?token=${encodeURIComponent(token)}`
+    console.log('[WS] Connecting to', url)
+
+    const ws = new WebSocket(url)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      console.log('[WS] Connected (transport), waiting for READY handshake…')
+      setIsConnected(true)
+      setConnectionReady(false) // wait for CONFIRM_OPEN
+      reconnectAttemptRef.current = 0
+    }
+
+    ws.onmessage = (event) => {
+      handleIncomingMessage(event.data)
+    }
+
+    ws.onerror = (event: any) => {
+      console.log('[WS] Error:', event?.message ?? event)
+    }
+
+    ws.onclose = (event) => {
+      console.log(
+        `[WS] Closed: code=${event.code}, reason=${event.reason || 'n/a'}`
+      )
+      setIsConnected(false)
+      setConnectionReady(false)
+      setActiveConversationId(null)
+      wsRef.current = null
+
+      if (!enabledRef.current) return
+
+      const delayMs = Math.min(
+        1000 * 2 ** reconnectAttemptRef.current,
+        10000
+      )
+      reconnectAttemptRef.current += 1
+      console.log(`[WS] Reconnecting in ${delayMs}ms`)
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+      }
+      reconnectTimerRef.current = setTimeout(() => {
+        connect()
+      }, delayMs)
+    }
+  }, [handleIncomingMessage])
+
   // --- INITIAL CONNECTION / TEARDOWN (depends only on `enabled`) ---
   useEffect(() => {
-    let isCancelled = false
-
     if (!enabled) {
+      enabledRef.current = false
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
@@ -159,61 +233,21 @@ export const WebSocketProvider: React.FC<{
       return
     }
 
-    const connect = async () => {
-      try {
-        const token = getToken()
-        if (!token) {
-          console.log('[WS] No access token – not connecting')
-          return
-        }
-        if (isCancelled) return
-
-        const url = `${WS_URL}?token=${encodeURIComponent(token)}`
-        console.log('[WS] Connecting to', url)
-
-        const ws = new WebSocket(url)
-        wsRef.current = ws
-
-        ws.onopen = () => {
-          console.log(
-            '[WS] Connected (transport), waiting for READY handshake…'
-          )
-          setIsConnected(true)
-          setConnectionReady(false) // wait for CONFIRM_OPEN
-        }
-
-        ws.onmessage = (event) => {
-          handleIncomingMessage(event.data)
-        }
-
-        ws.onerror = (event: any) => {
-          console.log('[WS] Error:', event?.message ?? event)
-        }
-
-        ws.onclose = (event) => {
-          console.log(
-            `[WS] Closed: code=${event.code}, reason=${event.reason || 'n/a'}`
-          )
-          setIsConnected(false)
-          setConnectionReady(false)
-          setActiveConversationId(null)
-          wsRef.current = null
-        }
-      } catch (e) {
-        console.log('[WS] Failed to connect:', e)
-      }
-    }
-
+    enabledRef.current = true
     connect()
 
     return () => {
-      isCancelled = true
+      enabledRef.current = false
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
       }
     }
-  }, [enabled, handleIncomingMessage])
+  }, [connect, enabled])
 
   // --- SUBSCRIBE / UNSUBSCRIBE ---
 
@@ -226,6 +260,7 @@ export const WebSocketProvider: React.FC<{
         console.log(
           '[WS] subscribe called before connectionReady, will auto-SUBSCRIBE after READY'
         )
+        connect()
         return
       }
 
@@ -235,7 +270,7 @@ export const WebSocketProvider: React.FC<{
         conversationId,
       })
     },
-    [connectionReady, sendJson]
+    [connect, connectionReady, sendJson]
   )
 
   const unsubscribe = useCallback(
