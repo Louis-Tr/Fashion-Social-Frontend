@@ -17,11 +17,11 @@ import {
   Platform,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   Image,
 } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { useSelector, useDispatch } from 'react-redux'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import type { RootState, AppDispatch } from '@/store/store'
 import { fetchMessages } from '@/services/message/fetchMessages'
@@ -43,28 +43,30 @@ function parseCreatedAt(value: string): Date {
   if (!Number.isNaN(direct.getTime())) return direct
 
   const match = value.match(
-    /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?\+(\d{2})$/
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([+-])(\d{2})(?::?(\d{2}))?$/
   )
 
-  if (!match) {
-    console.warn('[parseCreatedAt] Unhandled format:', value)
-    return new Date(NaN)
-  }
+  if (!match) return new Date(NaN)
 
-  const [, y, m, d, hh, mm, ss, frac] = match
+  const [, y, m, d, hh, mm, ss, frac, sign, offsetHours, offsetMinutes] = match
   const ms = frac ? Number(frac.slice(0, 3)) : 0
 
-  return new Date(
-    Date.UTC(
-      Number(y),
-      Number(m) - 1,
-      Number(d),
-      Number(hh),
-      Number(mm),
-      Number(ss),
-      ms
-    )
+  const utcMs = Date.UTC(
+    Number(y),
+    Number(m) - 1,
+    Number(d),
+    Number(hh),
+    Number(mm),
+    Number(ss),
+    ms
   )
+  const offsetMs =
+    (Number(offsetHours) * 60 + Number(offsetMinutes ?? '0')) *
+    60 *
+    1000 *
+    (sign === '+' ? 1 : -1)
+
+  return new Date(utcMs - offsetMs)
 }
 
 function isTimeBreakNeeded(newer: Message, older: Message) {
@@ -100,18 +102,6 @@ function formatTimeBreak(value: string) {
 }
 
 function buildMessageRows(messages: Message[]): MessageRow[] {
-  console.log(`input messages (${messages.length})`)
-  messages.forEach((m, index) => {
-    console.log(
-      `[msg ${index}] id=${m.id} sender=${m.senderId} createdAt=${m.createdAt} content="${m.content ?? ''}"`
-    )
-  })
-
-  if (messages.length === 0) {
-    console.log('output rows (0)')
-    console.groupEnd()
-    return []
-  }
   if (messages.length === 0) return []
 
   // messages must already be DESC: newest -> oldest
@@ -138,10 +128,11 @@ function buildMessageRows(messages: Message[]): MessageRow[] {
     })
   }
 
+  const oldest = messages[messages.length - 1]
   rows.push({
     type: 'time',
-    id: `time-${messages[messages.length - 1].id}`,
-    label: formatTimeBreak(messages[messages.length - 1].createdAt),
+    id: `time-oldest-${oldest.id}`,
+    label: formatTimeBreak(oldest.createdAt),
   })
 
   return rows
@@ -158,9 +149,6 @@ const MessageBubble = memo(function MessageBubble({
   avatarUri?: string
   isBeforeMe?: boolean
 }) {
-  const createdAtDate = parseCreatedAt(item.createdAt)
-  const isValid = !Number.isNaN(createdAtDate.getTime())
-
   const showAvatar = !isMe && isBeforeMe
 
   return (
@@ -205,12 +193,14 @@ type InputBarProps = {
   conversationId: string
   isReady: boolean
   onSend: (conversationId: string, text: string) => void
+  bottomInset?: number
 }
 
 const MessageInputBar = memo(function MessageInputBar({
   conversationId,
   isReady,
   onSend,
+  bottomInset = 0,
 }: InputBarProps) {
   const [text, setText] = useState('')
 
@@ -222,7 +212,7 @@ const MessageInputBar = memo(function MessageInputBar({
   }, [text, conversationId, isReady, onSend])
 
   return (
-    <View style={styles.inputContainer}>
+    <View style={[styles.inputContainer, { paddingBottom: Math.max(bottomInset, 8) }]}>
       <TextInput
         style={styles.input}
         value={text}
@@ -271,6 +261,7 @@ export default function ConversationScreen() {
   const previousTopMessageIdRef = useRef<string | undefined>(undefined)
 
   const dispatch = useDispatch<AppDispatch>()
+  const insets = useSafeAreaInsets()
   const { conversations, isLoadingConversation } = useSelector(
     (state: RootState) => state.conversation
   )
@@ -295,7 +286,14 @@ export default function ConversationScreen() {
 
   // Sort newest → oldest, then use `inverted` so newest is at the bottom
   const displayMessages = useMemo(() => {
-    return [...messages].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    return [...messages].sort((a, b) => {
+      const aTs = parseCreatedAt(a.createdAt).getTime()
+      const bTs = parseCreatedAt(b.createdAt).getTime()
+      if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return bTs - aTs
+      if (!Number.isNaN(aTs)) return -1
+      if (!Number.isNaN(bTs)) return 1
+      return b.id.localeCompare(a.id)
+    })
   }, [messages])
 
   const rows = useMemo(() => {
@@ -439,7 +437,8 @@ export default function ConversationScreen() {
             inverted
             contentContainerStyle={{ paddingVertical: 8 }}
             maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-            onScrollToTop={handleLoadMore}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.2}
             ListFooterComponent={
               isLoadingConversation ? (
                 <View style={styles.footer}>
@@ -460,6 +459,7 @@ export default function ConversationScreen() {
             conversationId={conversationId}
             isReady={conversationReady}
             onSend={handleSend}
+            bottomInset={insets.bottom}
           />
         </View>
       </KeyboardAvoidingView>
