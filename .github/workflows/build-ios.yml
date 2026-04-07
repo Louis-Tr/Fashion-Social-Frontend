@@ -33,8 +33,7 @@ jobs:
         run: |
           cat > .env <<'EOF'
           EXPO_PUBLIC_AWS_REGION=${{ secrets.EXPO_PUBLIC_AWS_REGION }}
-          EXPO_PUBLIC_LOCALHOST_ANDROID=${{ secrets.EXPO_PUBLIC_LOCALHOST_ANDROID }}
-          EXPO_PUBLIC_LOCALHOST_IOS=${{ secrets.EXPO_PUBLIC_LOCALHOST_IOS }}
+          EXPO_PUBLIC_API_BASE_URL=${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
           EXPO_PUBLIC_USER_POOL_CLIENT_ID=${{ secrets.EXPO_PUBLIC_USER_POOL_CLIENT_ID }}
           EXPO_PUBLIC_USER_POOL_ID=${{ secrets.EXPO_PUBLIC_USER_POOL_ID }}
           EOF
