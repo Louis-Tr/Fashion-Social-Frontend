@@ -1,9 +1,8 @@
 // src/services/story/fetchStories.ts
 import { AppDispatch, RootState } from '@/store/store'
-import { setStory } from '@/store/slices/storySlice'
-import { BASE_URL } from '@/constants/Url'
+import { setStory, StorySchema } from '@/store/slices/storySlice' // or wherever StorySchema lives
+import { API_BASE_URL } from '@/constants/Url'
 import { z } from 'zod'
-import { StorySchema } from '@/store/slices/storySlice' // or wherever StorySchema lives
 
 const StoriesRes = z.object({
   ok: z.boolean(),
@@ -17,7 +16,7 @@ export const fetchStories =
     const { token } = getState().auth
 
     try {
-      const resp = await fetch(`${BASE_URL}/story`, {
+      const resp = await fetch(`${API_BASE_URL}/story`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`,

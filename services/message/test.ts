@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { getToken } from '@/utils/token'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import {
   Conversation,
   ConversationSchema,
@@ -11,7 +11,7 @@ import {
 
 async function loadConversations(): Promise<Conversation[]> {
   const token = getToken()
-  const rep = await fetch(`${BASE_URL}/message/conversations`, {
+  const rep = await fetch(`${API_BASE_URL}/message/conversations`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -26,7 +26,7 @@ async function loadConversations(): Promise<Conversation[]> {
 async function loadMessages(conversationId: string): Promise<Message[]> {
   const token = getToken()
   const rep = await fetch(
-    `${BASE_URL}/message/conversations/${conversationId}`,
+    `${API_BASE_URL}/message/conversations/${conversationId}`,
     {
       method: 'GET',
       headers: {

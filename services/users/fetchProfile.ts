@@ -1,7 +1,7 @@
 // src/services/user/fetchProfile.ts
 import { z } from 'zod'
 import { getToken } from '@/utils/token'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 
 // ⬇️ Must match backend UserProfileRes shape EXACTLY
 export const UserProfileSchema = z.object({
@@ -25,7 +25,7 @@ export async function fetchProfile(userId: string): Promise<UserProfile> {
     throw new Error('Missing access token')
   }
 
-  const res = await fetch(`${BASE_URL}/user/${userId}`, {
+  const res = await fetch(`${API_BASE_URL}/user/${userId}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,

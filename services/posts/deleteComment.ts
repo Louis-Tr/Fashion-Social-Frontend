@@ -1,5 +1,5 @@
 import { getToken } from '@/utils/token'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import { Comment } from '@/types/comment'
 
 async function deleteComment(
@@ -7,14 +7,17 @@ async function deleteComment(
   commentId: string
 ): Promise<{ ok: boolean; comment: Comment }> {
   const token = getToken()
-  const res = await fetch(`${BASE_URL}/post/${postId}/comment/${commentId}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Idempotency-Key':
-        crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
-    },
-  })
+  const res = await fetch(
+    `${API_BASE_URL}/post/${postId}/comment/${commentId}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Idempotency-Key':
+          crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+      },
+    }
+  )
   return res.json()
 }
 

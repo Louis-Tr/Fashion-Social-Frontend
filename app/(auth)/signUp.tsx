@@ -1,22 +1,21 @@
 // app/(auth)/signUp.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Button,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
-  StyleSheet,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { signUp } from 'aws-amplify/auth'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 
 // ---------------- Types ----------------
 type Prediction = {
@@ -93,10 +92,10 @@ export default function SignUpScreen() {
   const isHandleValid = (h: string) => /^[a-z0-9_]{3,32}$/.test(h)
 
   const checkHandleAvailability = async (h: string): Promise<boolean> => {
-    if (!BASE_URL) throw new Error('Missing EXPO_PUBLIC_API_BASE_URL')
+    if (!API_BASE_URL) throw new Error('Missing EXPO_PUBLIC_API_BASE_URL')
 
     const res = await fetch(
-      `${BASE_URL}/handle?handle=${encodeURIComponent(h)}`,
+      `${API_BASE_URL}/handle?handle=${encodeURIComponent(h)}`,
       {
         method: 'GET',
         headers: {
@@ -169,7 +168,7 @@ export default function SignUpScreen() {
     setPlacesError(null)
 
     try {
-      const url = `${BASE_URL}/places?input=${encodeURIComponent(trimmed)}`
+      const url = `${API_BASE_URL}/places?input=${encodeURIComponent(trimmed)}`
 
       const res = await fetch(url, {
         method: 'GET',

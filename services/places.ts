@@ -1,6 +1,6 @@
 // src/services/places/fetchPlaces.ts
 import { z } from 'zod'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 
 export const PlaceSchema = z.object({
   placeId: z.string(),
@@ -26,7 +26,7 @@ export async function fetchPlaces(input: string): Promise<Place[]> {
     input: trimmed,
   })
 
-  const res = await fetch(`${BASE_URL}/places?${query.toString()}`, {
+  const res = await fetch(`${API_BASE_URL}/places?${query.toString()}`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',

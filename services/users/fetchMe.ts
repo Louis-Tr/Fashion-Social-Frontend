@@ -1,7 +1,6 @@
 // src/services/user/fetchProfile.ts
 import { z } from 'zod'
-import { getToken } from '@/utils/token'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import { AppDispatch, RootState } from '@/store/store'
 import { setMe } from '@/store/slices/meSlice'
 
@@ -26,7 +25,7 @@ export const fetchMe =
     const { token } = getState().auth
 
     try {
-      const res = await fetch(`${BASE_URL}/user/me`, {
+      const res = await fetch(`${API_BASE_URL}/user/me`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`,

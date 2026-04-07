@@ -1,5 +1,5 @@
 // src/services/friendship.ts
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 import { getToken } from '@/utils/token'
 
 type FriendshipStatus = 'pending' | 'accepted'
@@ -26,7 +26,7 @@ async function authPost(path: string, body?: unknown) {
     throw new Error('No access token available')
   }
 
-  const res = await fetch(`${BASE_URL}/user${path}`, {
+  const res = await fetch(`${API_BASE_URL}/user${path}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -88,7 +88,7 @@ export async function getFriendshipStatus(
   const token = await getToken()
   if (!token) throw new Error('Missing access token')
 
-  const res = await fetch(`${BASE_URL}/user/friend/${targetId}/status`, {
+  const res = await fetch(`${API_BASE_URL}/user/friend/${targetId}/status`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -108,7 +108,7 @@ export async function unfriendRequest(targetId: string) {
   const token = await getToken()
   if (!token) throw new Error('No access token available')
 
-  const res = await fetch(`${BASE_URL}/friend/${targetId}`, {
+  const res = await fetch(`${API_BASE_URL}/friend/${targetId}`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${token}`,

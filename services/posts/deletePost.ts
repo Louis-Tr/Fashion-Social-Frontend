@@ -1,10 +1,10 @@
 import { getToken } from '@/utils/token'
-import { BASE_URL } from '@/constants/Url'
+import { API_BASE_URL } from '@/constants/Url'
 
 export async function deletePost(postId: string): Promise<void> {
   const token = getToken()
 
-  const res = await fetch(`${BASE_URL}/post/${postId}`, {
+  const res = await fetch(`${API_BASE_URL}/post/${postId}`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${token}`,
