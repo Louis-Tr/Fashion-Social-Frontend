@@ -1,22 +1,15 @@
-import React, { useEffect, useState } from 'react'
-import FontAwesome from '@expo/vector-icons/FontAwesome'
+import React, { useEffect } from 'react'
 import Entypo from '@expo/vector-icons/Entypo'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Tabs } from 'expo-router'
-import { Image, View, ViewStyle } from 'react-native'
+import { Image, Platform, View, ViewStyle } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '@/store/store'
 import { z } from 'zod'
 import { fetchMe } from '@/services/users/fetchMe'
 import { urlFromKey } from '@/services/media/urlFromKey'
-
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name']
-  color: string
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />
-}
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 export const unstable_settings = {
   initialRouteName: 'home',
@@ -87,6 +80,13 @@ function PersonalTabIcon({ color }: { color: string }) {
 
 export default function TabLayout() {
   const visible = useSelector((state: RootState) => state.tab.visible)
+  const insets = useSafeAreaInsets()
+
+  const tabBarBottomInset = Platform.select({
+    ios: Math.max(insets.bottom, 8),
+    android: 12,
+    default: 12,
+  })
 
   return (
     <Tabs
@@ -94,9 +94,11 @@ export default function TabLayout() {
         tabBarActiveTintColor: 'white',
         headerShown: false,
 
-        // THE FIX — apply redux visibility here
         tabBarStyle: {
           ...FLOATING_TAB_STYLE,
+          bottom: tabBarBottomInset,
+          height: Platform.OS === 'ios' ? 64 : 60,
+          paddingBottom: Platform.OS === 'ios' ? 8 : 4,
           display: visible ? 'flex' : 'none',
         },
       }}
