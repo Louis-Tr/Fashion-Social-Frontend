@@ -18,7 +18,7 @@ export const fetchMessages =
     const conversation = conversations.find(
       (conversation) => conversation.id === conversationId
     )
-    const beforeId = conversation?.messages?.at(-1)?.id
+    const beforeId = conversation?.messages?.[0]?.id
 
     if (isLoadingConversation) return
 
