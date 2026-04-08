@@ -121,7 +121,7 @@ export default function SignInScreen() {
       // ✅ Optional: you can route immediately here,
       // but if your RootLayout guards already handle it, you can omit this.
       // Keeping it explicit improves perceived responsiveness.
-      router.replace('/(app)')
+      router.replace('/(app)/(tabs)/home')
     } catch (err: any) {
       const name = err?.name || 'UnknownError'
       const message = err?.message || String(err)
