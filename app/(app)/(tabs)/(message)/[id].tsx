@@ -438,7 +438,7 @@ export default function ConversationScreen() {
             contentContainerStyle={{ paddingVertical: 8 }}
             maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
             onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.2}
+            onEndReachedThreshold={0.05}
             ListFooterComponent={
               isLoadingConversation ? (
                 <View style={styles.footer}>
