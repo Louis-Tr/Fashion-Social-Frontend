@@ -36,3 +36,8 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 /.env
+.secret/*
+
+# build file
+ios/
+android/

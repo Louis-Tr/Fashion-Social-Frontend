@@ -11,9 +11,34 @@ import { getToken } from '@/utils/token'
 import { WS_URL } from '@/constants/Url'
 import { upsertMessage } from '@/store/slices/conversationSlice'
 import { store } from '@/store/store'
-import { Message, MessageSchema } from '@/types/schemas/conversation'
+import { MessageSchema } from '@/types/schemas/conversation'
 import { z } from 'zod'
 
+// ==============================
+// 🔧 DEBUG CONFIG
+// ==============================
+const WS_DEBUG = true // set false in production
+
+const log = (...args: any[]) => {
+  if (WS_DEBUG) {
+    console.log(
+      `%c[WS ${new Date().toISOString()}]`,
+      'color: purple; font-weight: bold;',
+      ...args
+    )
+  }
+}
+
+const logGroup = (label: string, fn: () => void) => {
+  if (!WS_DEBUG) return
+  console.group(`%c[WS] ${label}`, 'color: purple; font-weight: bold;')
+  fn()
+  console.groupEnd()
+}
+
+// ==============================
+// 📦 SCHEMAS
+// ==============================
 const WsMessageTypes = z.enum([
   'SUBSCRIBE',
   'UNSUBSCRIBE',
@@ -34,11 +59,14 @@ const WsMessageSchema = z.object({
 
 type WsMessage = z.infer<typeof WsMessageSchema>
 
+// ==============================
+// 🧠 CONTEXT TYPES
+// ==============================
 type WebSocketContextValue = {
-  isConnected: boolean // raw transport connection (TCP/WS)
-  isReady: boolean // connection-level READY from backend
+  isConnected: boolean
+  isReady: boolean
   activeConversationId: string | null
-  conversationReady: boolean // now = isReady && !!activeConversationId
+  conversationReady: boolean
   subscribe: (conversationId: string) => void
   unsubscribe: (conversationId: string) => void
   sendMessage: (conversationId: string, text: string) => void
@@ -48,6 +76,9 @@ const WebSocketContext = createContext<WebSocketContextValue | undefined>(
   undefined
 )
 
+// ==============================
+// 🚀 PROVIDER
+// ==============================
 export const WebSocketProvider: React.FC<{
   children: React.ReactNode
   enabled?: boolean
@@ -56,55 +87,76 @@ export const WebSocketProvider: React.FC<{
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttemptRef = useRef(0)
   const enabledRef = useRef(enabled)
+  const connectionIdRef = useRef(0)
 
   const [isConnected, setIsConnected] = useState(false)
-  const [connectionReady, setConnectionReady] = useState(false) // handshake 1: READY
+  const [connectionReady, setConnectionReady] = useState(false)
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null)
 
-  // keep latest active conversation in a ref so WS handler sees fresh value
   const activeConversationIdRef = useRef<string | null>(null)
+
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId
   }, [activeConversationId])
+
   useEffect(() => {
     enabledRef.current = enabled
   }, [enabled])
 
   const conversationReady = connectionReady && !!activeConversationId
 
-  // payload here is *client → server*, so don't force WsMessage shape
+  // ==============================
+  // 📤 SEND JSON
+  // ==============================
   const sendJson = useCallback((payload: any) => {
     const ws = wsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
+
+    logGroup('OUTGOING', () => {
+      log('readyState:', ws?.readyState)
+      log('payload:', payload)
+    })
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      log('❌ SEND BLOCKED: socket not open')
+      return
+    }
+
     ws.send(JSON.stringify(payload))
   }, [])
 
-  // --- SERVER → CLIENT handler (parse with WsMessageSchema) ---
+  // ==============================
+  // 📥 HANDLE INCOMING
+  // ==============================
   const handleIncomingMessage = useCallback(
     (raw: string) => {
+      logGroup('INCOMING RAW', () => {
+        log(raw)
+      })
+
       let msg: WsMessage
       try {
         msg = WsMessageSchema.parse(JSON.parse(raw))
       } catch {
-        console.log('[WS] Raw (non-JSON / invalid) message:', raw)
+        log('❌ Invalid message format:', raw)
         return
       }
 
+      logGroup(`INCOMING PARSED → ${msg.type}`, () => {
+        log('payload:', msg)
+        log('activeConversationRef:', activeConversationIdRef.current)
+      })
+
       const type = msg.type
 
-      // CONNECTION-LEVEL ACK (no conversationId needed)
       if (type === 'CONFIRM_OPEN') {
-        console.log('[WS] READY (connection handshake) received')
+        log('✅ READY received (connection handshake)')
         setConnectionReady(true)
 
         const convoId = activeConversationIdRef.current
         if (convoId) {
-          console.log(
-            '[WS] Auto-SUBSCRIBE after READY for conversation',
-            convoId
-          )
+          log('🔁 Auto-subscribing to:', convoId)
           sendJson({
             type: 'SUBSCRIBE',
             conversationId: convoId,
@@ -113,43 +165,49 @@ export const WebSocketProvider: React.FC<{
         return
       }
 
-      // SUBSCRIBE ACK
       if (type === 'CONFIRM_SUBSCRIBE') {
-        console.log('[WS] SUBSCRIBED to conversation', msg.conversationId)
+        log('✅ SUBSCRIBED:', msg.conversationId)
         return
       }
 
-      // (UNSUBSCRIBE ACK not modeled in enum; you can piggyback on ERROR or ignore)
-
-      // MESSAGE ACK
       if (type === 'CONFIRM_MESSAGE') {
-        console.log('[WS] MESSAGE_ACK:', msg)
+        logGroup('MESSAGE ACK', () => {
+          log('server message:', msg.message)
+        })
+
         if (msg.message) {
           store.dispatch(upsertMessage(msg.message))
         }
         return
       }
 
-      // ACTUAL LIVE MESSAGE
       if (type === 'MESSAGE') {
         const message = msg.message
         if (message) {
-          console.log('[WS] Live message:', message)
+          logGroup('📩 LIVE MESSAGE', () => {
+            log('id:', message.id)
+            log('conversationId:', message.conversationId)
+            log('content:', message.content)
+          })
+
           store.dispatch(upsertMessage(message))
         }
         return
       }
 
       if (type === 'ERROR') {
-        console.log('[WS] ERROR frame:', msg)
+        log('❌ WS ERROR:', msg)
         return
       }
 
-      console.log('[WS] Unhandled message type:', msg)
+      log('⚠️ Unhandled message type:', msg)
     },
     [sendJson]
   )
 
+  // ==============================
+  // 🔌 CONNECT
+  // ==============================
   const connect = useCallback(() => {
     if (!enabledRef.current) return
 
@@ -159,25 +217,33 @@ export const WebSocketProvider: React.FC<{
       (existing.readyState === WebSocket.OPEN ||
         existing.readyState === WebSocket.CONNECTING)
     ) {
+      log('⚠️ Already connected or connecting')
       return
     }
 
     const token = getToken()
     if (!token) {
-      console.log('[WS] No access token – not connecting')
+      log('❌ No token, skipping WS connect')
       return
     }
 
+    connectionIdRef.current += 1
+    const connectionId = connectionIdRef.current
+
     const url = `${WS_URL}?token=${encodeURIComponent(token)}`
-    console.log('[WS] Connecting to', url)
+
+    logGroup(`CONNECT #${connectionId}`, () => {
+      log('url:', url)
+      log('token exists:', !!token)
+    })
 
     const ws = new WebSocket(url)
     wsRef.current = ws
 
     ws.onopen = () => {
-      console.log('[WS] Connected (transport), waiting for READY handshake…')
+      log(`[#${connectionId}] ✅ OPEN`)
       setIsConnected(true)
-      setConnectionReady(false) // wait for CONFIRM_OPEN
+      setConnectionReady(false)
       reconnectAttemptRef.current = 0
     }
 
@@ -186,13 +252,16 @@ export const WebSocketProvider: React.FC<{
     }
 
     ws.onerror = (event: any) => {
-      console.log('[WS] Error:', event?.message ?? event)
+      log(`[#${connectionId}] ❌ ERROR`, event?.message ?? event)
     }
 
     ws.onclose = (event) => {
-      console.log(
-        `[WS] Closed: code=${event.code}, reason=${event.reason || 'n/a'}`
-      )
+      logGroup(`[#${connectionId}] CLOSED`, () => {
+        log('code:', event.code)
+        log('reason:', event.reason || 'n/a')
+        log('wasClean:', event.wasClean)
+      })
+
       setIsConnected(false)
       setConnectionReady(false)
       setActiveConversationId(null)
@@ -204,29 +273,41 @@ export const WebSocketProvider: React.FC<{
         1000 * 2 ** reconnectAttemptRef.current,
         10000
       )
+
       reconnectAttemptRef.current += 1
-      console.log(`[WS] Reconnecting in ${delayMs}ms`)
+
+      logGroup('RECONNECT SCHEDULED', () => {
+        log('attempt:', reconnectAttemptRef.current)
+        log('delayMs:', delayMs)
+      })
+
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current)
       }
+
       reconnectTimerRef.current = setTimeout(() => {
         connect()
       }, delayMs)
     }
   }, [handleIncomingMessage])
 
-  // --- INITIAL CONNECTION / TEARDOWN (depends only on `enabled`) ---
+  // ==============================
+  // 🔁 INIT / CLEANUP
+  // ==============================
   useEffect(() => {
     if (!enabled) {
       enabledRef.current = false
+
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current)
         reconnectTimerRef.current = null
       }
+
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
       }
+
       setIsConnected(false)
       setConnectionReady(false)
       setActiveConversationId(null)
@@ -238,10 +319,12 @@ export const WebSocketProvider: React.FC<{
 
     return () => {
       enabledRef.current = false
+
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current)
         reconnectTimerRef.current = null
       }
+
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
@@ -249,22 +332,26 @@ export const WebSocketProvider: React.FC<{
     }
   }, [connect, enabled])
 
-  // --- SUBSCRIBE / UNSUBSCRIBE ---
-
+  // ==============================
+  // 📡 SUBSCRIBE
+  // ==============================
   const subscribe = useCallback(
     (conversationId: string) => {
+      logGroup('SUBSCRIBE FLOW', () => {
+        log('conversationId:', conversationId)
+        log('connectionReady:', connectionReady)
+        log('current active:', activeConversationIdRef.current)
+      })
+
       setActiveConversationId(conversationId)
       activeConversationIdRef.current = conversationId
 
       if (!connectionReady) {
-        console.log(
-          '[WS] subscribe called before connectionReady, will auto-SUBSCRIBE after READY'
-        )
+        log('⏳ Delayed subscribe (waiting for READY)')
         connect()
         return
       }
 
-      console.log('[WS] Sending SUBSCRIBE for', conversationId)
       sendJson({
         type: 'SUBSCRIBE',
         conversationId,
@@ -273,11 +360,15 @@ export const WebSocketProvider: React.FC<{
     [connect, connectionReady, sendJson]
   )
 
+  // ==============================
+  // ❌ UNSUBSCRIBE
+  // ==============================
   const unsubscribe = useCallback(
     (conversationId: string) => {
+      log('UNSUBSCRIBE:', conversationId)
+
       if (!connectionReady) return
 
-      console.log('[WS] Sending UNSUBSCRIBE for', conversationId)
       sendJson({
         type: 'UNSUBSCRIBE',
         conversationId,
@@ -291,36 +382,35 @@ export const WebSocketProvider: React.FC<{
     [connectionReady, sendJson]
   )
 
-  // --- SEND MESSAGE (client → server SEND frame) ---
-
+  // ==============================
+  // 💬 SEND MESSAGE
+  // ==============================
   const sendMessage = useCallback(
     (conversationId: string, text: string) => {
       const trimmed = text.trim()
       if (!trimmed) return
 
       if (!connectionReady) {
-        console.log('[WS] Cannot SEND – connection not READY yet')
+        log('❌ SEND BLOCKED: not READY')
         return
       }
 
       if (activeConversationIdRef.current !== conversationId) {
-        console.log('[WS] Cannot SEND – conversation not active', {
-          activeConversationId: activeConversationIdRef.current,
-          conversationId,
+        logGroup('❌ SEND BLOCKED: wrong conversation', () => {
+          log('expected:', activeConversationIdRef.current)
+          log('got:', conversationId)
         })
         return
       }
 
-      console.log('[WS] SEND →', { conversationId, text: trimmed })
+      log('🚀 SEND MESSAGE', { conversationId, text: trimmed })
 
-      // This shape is for the backend. It does *not* have to match WsMessageSchema,
-      // since that schema is only for server → client frames.
       sendJson({
         type: 'MESSAGE',
-        conversationId: conversationId,
+        conversationId,
         message: {
           id: '',
-          conversationId: conversationId,
+          conversationId,
           content: trimmed,
           senderId: '',
           createdAt: '',
@@ -347,6 +437,9 @@ export const WebSocketProvider: React.FC<{
   )
 }
 
+// ==============================
+// 🪝 HOOK
+// ==============================
 export const useWebSocket = (): WebSocketContextValue => {
   const ctx = useContext(WebSocketContext)
   if (!ctx) {

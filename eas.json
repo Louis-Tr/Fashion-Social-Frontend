@@ -24,7 +24,7 @@
         "ascAppId": "6761637668",
         "ascApiKeyId": "2NYR7MX58A",
         "ascApiKeyIssuerId": "83d3d475-1f56-45cc-8024-9793ce5d6bf9",
-        "ascApiKeyPath": ".secrets/AuthKey.p8"
+        "ascApiKeyPath": ".secret/AuthKey.p8"
       }
     }
   }
