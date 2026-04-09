@@ -1,7 +1,6 @@
 import type { ImagePickerAsset } from 'expo-image-picker'
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
+import { ImageManipulator } from 'expo-image-manipulator'
 import { Video } from 'react-native-compressor'
-import * as FileSystem from 'expo-file-system'
 
 export type RNFile = {
   uri: string
@@ -24,34 +23,32 @@ export async function prepareFileForUpload(
   throw new Error('Unsupported asset type')
 }
 
+const STANDARD_IMAGE_SIZE = 1080
+const STANDARD_IMAGE_QUALITY = 0.8
+
 export async function prepareImage(asset: ImagePickerAsset): Promise<RNFile> {
-  const ext = asset.fileName?.split('.').pop()?.toLowerCase()
+  const width = asset.width ?? STANDARD_IMAGE_SIZE
+  const height = asset.height ?? STANDARD_IMAGE_SIZE
+  const squareSize = Math.max(1, Math.min(width, height))
 
-  const needsConvert =
-    ext !== 'jpg' && ext !== 'jpeg' && asset.mimeType !== 'image/jpeg'
-
-  let uri = asset.uri
-
-  if (needsConvert) {
-    // Create manipulator context
-    const ctx = ImageManipulator.manipulate(asset.uri)
-
-    // Apply (optional) resize + render
-    const rendered = await ctx
-      .resize({ width: 1080 }) // keep aspect ratio
-      .renderAsync()
-
-    // Save as compressed JPEG
-    const saved = await rendered.saveAsync({
-      format: ImageManipulator.SaveFormat.JPEG,
-      compress: 0.8,
+  // Enforce a single image output format for predictable upload size and quality.
+  const rendered = await ImageManipulator.manipulate(asset.uri)
+    .crop({
+      originX: Math.max(0, Math.floor((width - squareSize) / 2)),
+      originY: Math.max(0, Math.floor((height - squareSize) / 2)),
+      width: squareSize,
+      height: squareSize,
     })
+    .resize({ width: STANDARD_IMAGE_SIZE, height: STANDARD_IMAGE_SIZE })
+    .renderAsync()
 
-    uri = saved.uri
-  }
+  const saved = await rendered.saveAsync({
+    format: ImageManipulator.SaveFormat.JPEG,
+    compress: STANDARD_IMAGE_QUALITY,
+  })
 
   return {
-    uri,
+    uri: saved.uri,
     name: `${asset.fileName ?? 'image'}.jpg`,
     type: 'image/jpeg',
     size: asset.fileSize,
