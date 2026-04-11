@@ -17,6 +17,36 @@ import { fetchConversations } from '@/services/message/fetchConversation'
 import type { AppDispatch, RootState } from '@/store/store'
 import { urlFromKey } from '@/services/media/urlFromKey'
 import type { Conversation } from '@/types/schemas/conversation'
+import { FashionTheme } from '@/constants/Theme'
+
+function parseDate(value?: string | null): number {
+  if (!value) return Number.NaN
+  const parsed = new Date(value).getTime()
+  if (!Number.isNaN(parsed)) return parsed
+
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([+-])(\d{2})(?::?(\d{2}))?$/
+  )
+  if (!match) return Number.NaN
+
+  const [, y, m, d, hh, mm, ss, frac, sign, offsetHours, offsetMinutes] = match
+  const baseUtc = Date.UTC(
+    Number(y),
+    Number(m) - 1,
+    Number(d),
+    Number(hh),
+    Number(mm),
+    Number(ss),
+    frac ? Number(frac.slice(0, 3)) : 0
+  )
+  const offsetMs =
+    (Number(offsetHours) * 60 + Number(offsetMinutes ?? '0')) *
+    60 *
+    1000 *
+    (sign === '+' ? 1 : -1)
+
+  return baseUtc - offsetMs
+}
 
 function parseDate(value?: string | null): number {
   if (!value) return Number.NaN
@@ -180,24 +210,24 @@ export default function MessageListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: FashionTheme.colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headerTitle: {
     fontSize: 24, // text-2xl
     fontWeight: '600', // font-semibold
     letterSpacing: 0.5, // tracking-wide (approx)
-    color: '#DB2777', // text-pink-600
-    paddingHorizontal: 16, // optional: aligns with list padding
-    paddingBottom: 8, // optional: breathing room
+    color: FashionTheme.colors.textPrimary,
+    paddingHorizontal: FashionTheme.spacing.lg,
+    paddingBottom: FashionTheme.spacing.sm,
   },
   row: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: FashionTheme.spacing.lg,
+    paddingVertical: FashionTheme.spacing.md,
   },
   separator: {
     height: 1,
-    backgroundColor: '#eee',
+    backgroundColor: FashionTheme.colors.border,
     marginLeft: 72,
   },
   avatarWrapper: {
@@ -210,11 +240,15 @@ const styles = StyleSheet.create({
   avatar: { width: '100%', height: '100%' },
   avatarFallback: {
     flex: 1,
-    backgroundColor: '#ddd',
+    backgroundColor: FashionTheme.colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarFallbackText: { fontSize: 18, fontWeight: '600', color: '#555' },
+  avatarFallbackText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: FashionTheme.colors.textSecondary,
+  },
   rowContent: { flex: 1 },
   rowHeader: {
     flexDirection: 'row',
@@ -222,11 +256,16 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   title: { fontSize: 16, fontWeight: '600', maxWidth: '75%' },
-  time: { fontSize: 12, color: '#999' },
+  time: { fontSize: 12, color: FashionTheme.colors.textMuted },
   rowFooter: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  lastMessage: { flex: 1, color: '#555', fontSize: 14, marginRight: 8 },
-  empty: { fontSize: 14, color: '#666' },
+  lastMessage: {
+    flex: 1,
+    color: FashionTheme.colors.textSecondary,
+    fontSize: 14,
+    marginRight: 8,
+  },
+  empty: { fontSize: 14, color: FashionTheme.colors.textSecondary },
 })

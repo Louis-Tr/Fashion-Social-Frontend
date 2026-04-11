@@ -11,6 +11,7 @@ import { Comment } from '@/types/comment'
 import StoryBar from '@/components/StoryBar'
 import { fetchStories } from '@/services/story/fetchStories'
 import { hideTabBar, showTabBar } from '@/store/slices/tabBarSlice'
+import { FashionTheme } from '@/constants/Theme'
 
 export default function HomeScreen() {
   const dispatch = useDispatch<AppDispatch>()
@@ -115,23 +116,20 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: FashionTheme.colors.background,
   },
   header: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
+    paddingHorizontal: FashionTheme.spacing.lg,
+    paddingBottom: FashionTheme.spacing.sm,
   },
-  // Tailwind: text-2xl font-semibold tracking-wide text-pink-600
   title: {
-    fontSize: 24,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    color: '#DB2777', // pink-600-ish
+    ...FashionTheme.typography.title,
+    color: FashionTheme.colors.textPrimary,
+    marginBottom: FashionTheme.spacing.sm,
   },
-  // Tailwind: text-gray-500 mt-10 text-center
   emptyText: {
     marginTop: 40,
     textAlign: 'center',
-    color: '#6B7280', // gray-500-ish
+    color: FashionTheme.colors.textSecondary,
   },
 })

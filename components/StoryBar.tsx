@@ -9,6 +9,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useCallback } from 'react'
+import { FashionTheme } from '@/constants/Theme'
 
 export const CreateStorySchema = z.object({
   tags: z.array(z.string()),
@@ -122,10 +123,11 @@ const AVATAR_SIZE = 56
 const styles = StyleSheet.create({
   container: {
     height: 112, // h-28
+    marginBottom: FashionTheme.spacing.sm,
   },
 
   scrollContent: {
-    paddingHorizontal: 12, // px-3
+    paddingHorizontal: FashionTheme.spacing.sm,
     paddingVertical: 8, // py-2
     alignItems: 'center',
   },
@@ -146,18 +148,18 @@ const styles = StyleSheet.create({
   },
 
   ringSeen: {
-    borderColor: '#9CA3AF', // gray-400
+    borderColor: FashionTheme.colors.borderStrong,
   },
 
   ringUnseen: {
-    borderColor: '#000000', // black
+    borderColor: FashionTheme.colors.surfaceStrong,
   },
 
   innerBuffer: {
     width: BUFFER_SIZE,
     height: BUFFER_SIZE,
     borderRadius: BUFFER_SIZE / 2,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: FashionTheme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -173,6 +175,7 @@ const styles = StyleSheet.create({
     width: 64, // w-16
     textAlign: 'center',
     fontSize: 12, // text-xs
+    color: FashionTheme.colors.textPrimary,
   },
 
   // Create story
@@ -186,7 +189,7 @@ const styles = StyleSheet.create({
     height: OUTER_SIZE,
     borderRadius: OUTER_SIZE / 2,
     borderWidth: 2,
-    borderColor: '#9CA3AF', // gray-400
+    borderColor: FashionTheme.colors.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -195,7 +198,7 @@ const styles = StyleSheet.create({
     width: BUFFER_SIZE, // h-16 w-16
     height: BUFFER_SIZE,
     borderRadius: BUFFER_SIZE / 2,
-    backgroundColor: '#262626', // neutral-800-ish
+    backgroundColor: FashionTheme.colors.surfaceStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -203,7 +206,7 @@ const styles = StyleSheet.create({
   createPlus: {
     fontSize: 30, // text-3xl-ish
     lineHeight: 30, // leading-none
-    color: '#FFFFFF',
+    color: FashionTheme.colors.inverseText,
   },
 
   createLabel: {
@@ -211,6 +214,7 @@ const styles = StyleSheet.create({
     width: 64,
     textAlign: 'center',
     fontSize: 12,
+    color: FashionTheme.colors.textPrimary,
   },
 
   storyItemWrap: {
