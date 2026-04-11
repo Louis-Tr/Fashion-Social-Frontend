@@ -25,6 +25,7 @@ import { z } from 'zod'
 import { Image } from 'expo-image'
 import { getUser } from '@/utils/getUser'
 import { deletePost } from '@/services/posts/deletePost'
+import { FashionTheme } from '@/constants/Theme'
 
 const { width } = Dimensions.get('window')
 const ITEM_ROW_H = 64
@@ -571,12 +572,16 @@ function PostItem(props: Post & { setFocusPost: () => void }) {
 export default React.memo(PostItem)
 
 const styles = StyleSheet.create({
-  postWrap: { width: '100%', paddingBottom: 16 },
+  postWrap: {
+    width: '100%',
+    paddingBottom: FashionTheme.spacing.lg,
+    backgroundColor: FashionTheme.colors.background,
+  },
   postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    marginBottom: 8,
+    paddingHorizontal: FashionTheme.spacing.lg,
+    marginBottom: FashionTheme.spacing.sm,
     justifyContent: 'space-between',
   },
   profilePress: { flexDirection: 'row', alignItems: 'center', columnGap: 8 },
@@ -586,11 +591,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: '#e4e4e7',
+    backgroundColor: FashionTheme.colors.surface,
   },
 
-  displayName: { fontSize: 14, fontWeight: '600', color: '#000' },
-  handle: { fontSize: 12, color: '#000' },
+  displayName: { fontSize: 14, fontWeight: '600', color: FashionTheme.colors.textPrimary },
+  handle: { fontSize: 12, color: FashionTheme.colors.textMuted },
 
   moreBtn: {
     flexDirection: 'row',
@@ -603,7 +608,7 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#000',
+    backgroundColor: FashionTheme.colors.surfaceStrong,
     marginVertical: 1.5,
   },
   mediaBox: {
@@ -611,9 +616,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  media: { width: '98%', height: '98%', borderRadius: 16 },
+  media: { width: '98%', height: '98%', borderRadius: FashionTheme.radius.lg },
 
-  itemsRow: { paddingHorizontal: 8, paddingTop: 8, columnGap: 8 },
+  itemsRow: {
+    paddingHorizontal: FashionTheme.spacing.lg,
+    paddingTop: FashionTheme.spacing.sm,
+    columnGap: FashionTheme.spacing.sm,
+  },
 
   dotsRow: {
     flexDirection: 'row',
@@ -621,30 +630,34 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   dot: { width: 6, height: 6, borderRadius: 999, marginHorizontal: 2 },
-  dotActive: { backgroundColor: '#000', opacity: 1 },
-  dotInactive: { backgroundColor: '#000', opacity: 0.3 },
+  dotActive: { backgroundColor: FashionTheme.colors.surfaceStrong, opacity: 1 },
+  dotInactive: { backgroundColor: FashionTheme.colors.surfaceStrong, opacity: 0.3 },
 
   iconRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: FashionTheme.spacing.lg,
+    paddingVertical: FashionTheme.spacing.sm,
   },
   leftIcons: { flexDirection: 'row', columnGap: 16 },
 
-  likesText: { paddingHorizontal: 16, fontWeight: '600' },
-  caption: { paddingHorizontal: 16, marginTop: 2 },
+  likesText: { paddingHorizontal: FashionTheme.spacing.lg, fontWeight: '600' },
+  caption: { paddingHorizontal: FashionTheme.spacing.lg, marginTop: 2 },
   captionName: { fontWeight: '600' },
 
   timeText: {
     marginTop: 4,
-    paddingHorizontal: 16,
+    paddingHorizontal: FashionTheme.spacing.lg,
     fontSize: 12,
-    color: '#6b7280',
+    color: FashionTheme.colors.textMuted,
     textTransform: 'uppercase',
   },
 
-  itemCard: { padding: 10, backgroundColor: '#fff', borderRadius: 20 },
+  itemCard: {
+    padding: 10,
+    backgroundColor: FashionTheme.colors.surface,
+    borderRadius: 20,
+  },
   itemCardIcon: { width: 24, height: 24 },
 })
