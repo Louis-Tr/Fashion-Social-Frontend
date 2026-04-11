@@ -1,21 +1,21 @@
 // app/(story)/[id].tsx
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View,
   Text,
   TouchableOpacity,
-  Pressable,
-  Image,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Video, ResizeMode } from 'expo-av'
+import { Image } from 'expo-image'
 import { z } from 'zod'
-import { InteractionManager } from 'react-native'
 import { urlFromKey } from '@/services/media/urlFromKey'
+import { useDispatch } from 'react-redux'
+import type { AppDispatch } from '@/store/store'
+import { fetchSingleStory } from '@/services/story/fetchSingleStory'
 
-// ===== Schema / Types (as provided) =====
 const User = z.object({
   id: z.string(),
   displayName: z.string(),
@@ -28,7 +28,7 @@ export const StorySchema = z.object({
   tags: z.array(z.string()),
   contentType: z.enum(['image/jpeg', 'video/mp4']),
   createdAt: z.string(),
-  presignUrl: z.string(),
+  presignUrl: z.string().nullable().optional(),
   impression: z.boolean().default(false),
 })
 
@@ -40,62 +40,89 @@ function toStringParam(v: string | string[] | undefined) {
   return undefined
 }
 
-/**
- * IMPORTANT FOR SHARED TRANSITION:
- * - This screen MUST render the shared element on first paint (no loader gate).
- * - For video, we animate a poster image (shared element), then mount <Video/> after interactions.
- */
 export default function StoryScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
+    const dispatch = useDispatch<AppDispatch>()
 
-  const id = toStringParam(params.id as any)
-  const storyParam = toStringParam(params.story as any)
+  const id = toStringParam(params.id as string | string[] | undefined)
 
-  const story = useMemo<StoryType | null>(() => {
-    if (!storyParam) return null
-    try {
-      const raw = JSON.parse(storyParam)
-      const res = StorySchema.safeParse(raw)
-      return res.success ? res.data : null
-    } catch {
-      return null
-    }
-  }, [storyParam])
-
-  // Mount heavy video AFTER shared transition finishes
-  const [showVideo, setShowVideo] = useState(false)
+  const [story, setStory] = useState<StoryType | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!story) return
-    if (story.contentType !== 'video/mp4') return
+    let active = true
 
-    const task = InteractionManager.runAfterInteractions(() => {
-      setShowVideo(true)
-    })
+    async function loadStory() {
+      if (!id) {
+        setError('Missing story id')
+        setLoading(false)
+        return
+      }
 
-    return () => task.cancel()
-  }, [story])
+      try {
+        setLoading(true)
+        setError(null)
 
-  // If opened via deep-link without story param, render a black shell
-  if (!story) {
+        const res = await dispatch(fetchSingleStory(id))
+        const payload = 'payload' in res ? res.payload : res
+        const parsed = StorySchema.safeParse(payload.story)
+
+        if (!active) return
+
+        if (!parsed.success) {
+          setError('Invalid story response')
+          return
+        }
+
+        setStory(parsed.data)
+      } catch (err) {
+        if (!active) return
+        setError((err as Error).message || 'Failed to load story')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadStory()
+
+    return () => {
+      active = false
+    }
+  }, [dispatch, id])
+
+  if (loading) {
     return (
       <SafeAreaView style={styles.safeAreaBlack}>
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.closePill}
-          >
-            <Text style={styles.whiteText}>Close</Text>
-          </TouchableOpacity>
+        <View style={styles.centerWrap}>
+          <ActivityIndicator size="small" color="#FFFFFF" />
+          <Text style={styles.loadingText}>Loading story...</Text>
         </View>
+      </SafeAreaView>
+    )
+  }
 
-        <View style={styles.missingWrap}>
-          <Text style={styles.missingText}>
-            Story data missing. Open from the story bar (passing params), or
-            implement fetch-by-id for deep links.
-          </Text>
-          {id ? <Text style={styles.missingId}>id: {id}</Text> : null}
+  if (error || !story) {
+    return (
+      <SafeAreaView style={styles.safeAreaBlack}>
+        <View style={styles.screen}>
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.closePill}
+              accessibilityLabel="Close story"
+            >
+              <Text style={styles.whiteText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.missingWrap}>
+            <Text style={styles.missingText}>
+              {error ?? 'Story data missing.'}
+            </Text>
+            {id ? <Text style={styles.missingId}>id: {id}</Text> : null}
+          </View>
         </View>
       </SafeAreaView>
     )
@@ -107,14 +134,16 @@ export default function StoryScreen() {
 
   return (
     <SafeAreaView style={styles.safeAreaBlack}>
-      {/* Tap anywhere to close (optional). Remove if you want tap-to-advance later. */}
-      <Pressable style={styles.pressableFill} onPress={() => router.back()}>
-        {/* Top bar */}
+      <View style={styles.screen}>
         <View style={styles.topBar}>
           <View style={styles.userRow}>
             <View style={styles.avatarWrap}>
               {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+                <Image
+                  source={avatarUrl}
+                  style={styles.avatarImg}
+                  contentFit="cover"
+                />
               ) : null}
             </View>
 
@@ -133,7 +162,6 @@ export default function StoryScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Tags */}
         {story.tags.length > 0 ? (
           <View style={styles.tagsRow}>
             {story.tags.map((t) => (
@@ -144,30 +172,26 @@ export default function StoryScreen() {
           </View>
         ) : null}
 
-        {/* Content */}
         <View style={styles.content}>
-          {/* Shared element MUST always exist on first render */}
-          <Image
-            source={{ uri: story.presignUrl }} // ideally poster thumbnail for video
-            style={styles.storyMedia}
-            resizeMode="contain"
-          />
-
-          {/* If it's video, mount video on top AFTER transition */}
-          {story.contentType === 'video/mp4' && showVideo ? (
-            <View style={styles.videoOverlay} pointerEvents="none">
-              <Video
-                source={{ uri: story.presignUrl }}
-                style={styles.video}
-                resizeMode={ResizeMode.CONTAIN}
-                useNativeControls={false}
-                shouldPlay
-                isLooping
-              />
+          {story.presignUrl ? (
+            <Image
+              source={story.presignUrl}
+              style={styles.storyMedia}
+              contentFit="contain"
+              cachePolicy="none"
+              transition={0}
+              onLoad={() => console.log('story image loaded')}
+              onError={(imgError) =>
+                console.log('story image error', imgError)
+              }
+            />
+          ) : (
+            <View style={styles.centerWrap}>
+              <Text style={styles.missingText}>Story image unavailable.</Text>
             </View>
-          ) : null}
+          )}
         </View>
-      </Pressable>
+      </View>
     </SafeAreaView>
   )
 }
@@ -175,78 +199,89 @@ export default function StoryScreen() {
 const styles = StyleSheet.create({
   safeAreaBlack: {
     flex: 1,
-    backgroundColor: '#000000',
-  },
-  pressableFill: {
-    flex: 1,
+    backgroundColor: '#000',
   },
 
-  // Tailwind: flex-row items-center justify-between px-4 pb-3 pt-2
+  screen: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+
+  centerWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+
+  loadingText: {
+    marginTop: 10,
+    color: 'rgba(255,255,255,0.7)',
+  },
+
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 12,
     paddingTop: 8,
+    paddingBottom: 12,
   },
 
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
   },
 
-  // Tailwind: h-10 w-10 overflow-hidden rounded-full bg-white/10
   avatarWrap: {
-    height: 40,
     width: 40,
+    height: 40,
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.10)',
   },
+
   avatarImg: {
-    height: '100%',
     width: '100%',
+    height: '100%',
   },
 
-  // Tailwind: ml-3
   userMeta: {
     marginLeft: 12,
+    flexShrink: 1,
   },
 
-  // Tailwind: font-semibold text-white
   userName: {
+    color: '#fff',
     fontWeight: '600',
-    color: '#FFFFFF',
   },
 
-  // Tailwind: text-xs text-white/60
   userTime: {
     marginTop: 2,
     fontSize: 12,
     color: 'rgba(255,255,255,0.60)',
   },
 
-  // Tailwind: rounded-xl bg-white/10 px-3 py-2
   closePill: {
+    marginLeft: 12,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.10)',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+
   whiteText: {
-    color: '#FFFFFF',
+    color: '#fff',
   },
 
-  // Tailwind: flex-row flex-wrap gap-2 px-4 pb-3
   tagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    // RN doesn't support "gap" reliably everywhere; use margins on pills instead.
   },
-  // Tailwind: rounded-full bg-white/10 px-3 py-1
+
   tagPill: {
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.10)',
@@ -255,44 +290,35 @@ const styles = StyleSheet.create({
     marginRight: 8,
     marginBottom: 8,
   },
-  // Tailwind: text-xs text-white/80
+
   tagText: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.80)',
   },
 
-  // Tailwind: flex-1 items-center justify-center
   content: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: '100%',
+    backgroundColor: '#000',
   },
+
   storyMedia: {
     width: '100%',
     height: '100%',
   },
 
-  videoOverlay: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-  },
-  video: {
-    width: '100%',
-    height: '100%',
-  },
-
-  // Missing story shell
   missingWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+
   missingText: {
     textAlign: 'center',
     color: 'rgba(255,255,255,0.70)',
   },
+
   missingId: {
     marginTop: 8,
     fontSize: 12,

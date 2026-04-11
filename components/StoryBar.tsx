@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'expo-router'
 import { useCallback } from 'react'
 import { FashionTheme } from '@/constants/Theme'
+import {urlFromKey} from '@/services/media/urlFromKey'
 
 export const CreateStorySchema = z.object({
   tags: z.array(z.string()),
@@ -42,11 +43,15 @@ export function StoryCircle({ story }: { story: StoryType }) {
   const handleStoryPress = useCallback(() => {
     router.push({
       pathname: '/(app)/(story)/[id]',
-      params: { id: story.id, story: JSON.stringify(story) },
+      params: { id: story.id },
     })
   }, [router, story])
 
   const ringStyle = story.impression ? styles.ringSeen : styles.ringUnseen
+    
+    const avatarUrl = story.user.avatarKey
+      ? urlFromKey(story.user.avatarKey)
+      : null
 
   return (
     <TouchableOpacity
@@ -60,7 +65,7 @@ export function StoryCircle({ story }: { story: StoryType }) {
         <View style={styles.innerBuffer}>
           {/* Avatar / thumbnail */}
           <Image
-            source={{ uri: story.presignUrl }} // ideally thumbnail
+            source={{ uri: avatarUrl }} // ideally thumbnail
             style={styles.avatar}
             resizeMode="cover"
           />

@@ -48,34 +48,6 @@ function parseDate(value?: string | null): number {
   return baseUtc - offsetMs
 }
 
-function parseDate(value?: string | null): number {
-  if (!value) return Number.NaN
-  const parsed = new Date(value).getTime()
-  if (!Number.isNaN(parsed)) return parsed
-
-  const match = value.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([+-])(\d{2})(?::?(\d{2}))?$/
-  )
-  if (!match) return Number.NaN
-
-  const [, y, m, d, hh, mm, ss, frac, sign, offsetHours, offsetMinutes] = match
-  const baseUtc = Date.UTC(
-    Number(y),
-    Number(m) - 1,
-    Number(d),
-    Number(hh),
-    Number(mm),
-    Number(ss),
-    frac ? Number(frac.slice(0, 3)) : 0
-  )
-  const offsetMs =
-    (Number(offsetHours) * 60 + Number(offsetMinutes ?? '0')) *
-    60 *
-    1000 *
-    (sign === '+' ? 1 : -1)
-
-  return baseUtc - offsetMs
-}
 
 export default function MessageListScreen() {
   const router = useRouter()

@@ -3,7 +3,11 @@ import { z } from 'zod'
 import { getToken } from '@/utils/token'
 import { API_BASE_URL } from '@/constants/Url'
 import { uploadToS3 } from '@/services/media'
+import * as ImageManipulator from 'expo-image-manipulator'
 
+// ==============================
+// 🧩 TYPES
+// ==============================
 type AttachItemProps = {
   id: string
   name: string
@@ -31,7 +35,6 @@ export type Allowed = z.infer<typeof AllowedMime>
 
 export const PostMedia = z.object({
   mediaMimeTypes: AllowedMime,
-  // IMPORTANT: per your requirement, "items" is attached item IDs (NOT media URIs)
   items: z.array(z.string()).optional(),
 })
 
@@ -41,15 +44,15 @@ export const CreatePostReq = z.object({
   medias: z.array(PostMedia).optional(),
 })
 
-// What the UI calls:
 export type CreatePostInput = {
   caption?: string
   visibility?: 'public' | 'followers' | 'private'
-  // [{ [mediaUri]: AttachItemProps[] }, ...]
   medias: Record<string, AttachItemProps[]>[]
 }
 
-// --- internal helpers ---
+// ==============================
+// 🔧 HELPERS
+// ==============================
 function inferMimeFromExt(uri: string): Allowed | null {
   const p = uri.toLowerCase()
   if (p.endsWith('.jpg') || p.endsWith('.jpeg')) return 'image/jpeg'
@@ -60,18 +63,11 @@ function inferMimeFromExt(uri: string): Allowed | null {
 }
 
 function makeIdempotencyKey(): string {
-  // RN may or may not have crypto.randomUUID()
   const c: any = (globalThis as any).crypto
   if (c?.randomUUID) return c.randomUUID()
   return `${Date.now()}-${Math.random()}`
 }
 
-/**
- * Flattens:
- *   [{ uriA: [a1,a2] }, { uriB: [] }]
- * into:
- *   [{ uri: uriA, attached: [...]}, { uri: uriB, attached: [] }]
- */
 function flattenInputMedias(
   medias: CreatePostInput['medias']
 ): Array<{ uri: string; attached: AttachItemProps[] }> {
@@ -82,6 +78,7 @@ function flattenInputMedias(
 
     for (const [uri, attached] of Object.entries(rec)) {
       if (!uri || typeof uri !== 'string') continue
+
       out.push({
         uri,
         attached: Array.isArray(attached) ? attached : [],
@@ -92,43 +89,71 @@ function flattenInputMedias(
   return out
 }
 
-// --- service ---
+// ==============================
+// 🖼️ NORMALIZE IMAGE (HEIC → JPG)
+// ==============================
+async function normalizeImage(uri: string): Promise<string> {
+  const lower = uri.toLowerCase()
+
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [],
+      {
+        compress: 0.9,
+        format: ImageManipulator.SaveFormat.JPEG,
+      }
+    )
+
+    return result.uri
+  }
+
+  return uri
+}
+
+// ==============================
+// 🚀 MAIN SERVICE
+// ==============================
 export async function createPost(input: CreatePostInput) {
   const token = getToken()
 
-  const flat = flattenInputMedias(input.medias).slice(0, 10) // backend max 10 media entries
+  const flat = flattenInputMedias(input.medias).slice(0, 10)
+
   if (flat.length === 0) {
     throw new Error('No media provided.')
   }
 
-  // Build CreatePostReq.medias: one PostMedia per mediaUri
-  const medias = flat.map(({ uri, attached }) => {
-    const mime = inferMimeFromExt(uri)
-    if (!mime) {
-      throw new Error(
-        `Unsupported media. Only JPG/PNG/WEBP images or MP4 video are allowed. Got: ${uri}`
-      )
-    }
+  // 🔥 Normalize + build payload (async-safe)
+  const processed = await Promise.all(
+    flat.map(async ({ uri, attached }) => {
+      const normalizedUri = await normalizeImage(uri)
 
-    // items = attached item IDs for this media
-    const itemIds = attached
-      .map((x) => x?.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0)
-    console.log(mime, itemIds)
+      const mime = inferMimeFromExt(normalizedUri)
+      if (!mime) {
+        throw new Error(
+          `Unsupported media. Only JPG/PNG/WEBP images or MP4 video are allowed. Got: ${uri}`
+        )
+      }
 
-    return {
-      mediaMimeTypes: mime,
-      ...(itemIds.length ? { items: itemIds } : {}),
-    }
-  })
+      const itemIds = attached
+        .map((x) => x?.id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+
+      return {
+        mediaMimeTypes: mime,
+        ...(itemIds.length ? { items: itemIds } : {}),
+        __uri: normalizedUri, // 👈 used later for upload
+      }
+    })
+  )
 
   const payload = {
     caption: input.caption ?? undefined,
     visibility: input.visibility ?? 'public',
-    medias,
+    medias: processed.map(({ __uri, ...rest }) => rest),
   }
 
-  // Zod validation against CreatePostReq
+  // ✅ Validate
   const parsed = CreatePostReq.safeParse(payload)
   if (!parsed.success) {
     const msg = parsed.error.issues
@@ -137,6 +162,9 @@ export async function createPost(input: CreatePostInput) {
     throw new Error(`Invalid create post payload: ${msg}`)
   }
 
+  // ==============================
+  // 📡 CREATE POST
+  // ==============================
   const res = await fetch(`${API_BASE_URL}/post`, {
     method: 'POST',
     headers: {
@@ -155,13 +183,21 @@ export async function createPost(input: CreatePostInput) {
   }
 
   const data = await res.json()
+
+  // ==============================
+  // ☁️ UPLOAD TO S3
+  // ==============================
   for (const t of data.uploadTargets) {
-    const file = flat[t.index].uri
+    const file = processed[t.index].__uri
 
     try {
       await uploadToS3(t.presignedUrl, file)
     } catch (err) {
-      throw new Error(`Failed to upload media at index ${t.index}: ${err}`)
+      throw new Error(
+        `Failed to upload media at index ${t.index}: ${err}`
+      )
     }
   }
+
+  return data
 }

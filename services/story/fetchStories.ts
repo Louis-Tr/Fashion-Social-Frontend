@@ -1,6 +1,6 @@
 // src/services/story/fetchStories.ts
 import { AppDispatch, RootState } from '@/store/store'
-import { setStory, StorySchema } from '@/store/slices/storySlice' // or wherever StorySchema lives
+import { setStory, StorySchema } from '@/store/slices/storySlice'
 import { API_BASE_URL } from '@/constants/Url'
 import { z } from 'zod'
 
@@ -33,7 +33,7 @@ export const fetchStories =
 
       return parsed
     } catch (err) {
-      console.error('[Story] Fetch error:', (err as any).message)
+      console.error('[Story] Fetch error:', (err as Error).message)
       throw err
     }
   }

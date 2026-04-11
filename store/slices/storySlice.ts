@@ -13,7 +13,7 @@ export const StorySchema = z.object({
   tags: z.array(z.string()),
   contentType: z.enum(['image/jpeg', 'video/mp4']),
   createdAt: z.string(),
-  presignUrl: z.string(),
+  presignUrl: z.string().nullable().optional(),
   impression: z.boolean().default(false),
 })
 
@@ -34,6 +34,18 @@ const storySlice = createSlice({
     setStory: (state, action: PayloadAction<StoryType[]>) => {
       state.stories = action.payload
     },
+
+    setSingleStory: (state, action: PayloadAction<StoryType>) => {
+      const incoming = action.payload
+      const index = state.stories.findIndex((s) => s.id === incoming.id)
+
+      if (index !== -1) {
+        state.stories[index] = incoming
+      } else {
+        state.stories.push(incoming)
+      }
+    },
+
     setSeenStory: (state, action: PayloadAction<string>) => {
       const story = state.stories.find((s) => s.id === action.payload)
       if (story) {
@@ -43,5 +55,5 @@ const storySlice = createSlice({
   },
 })
 
-export const { setStory, setSeenStory } = storySlice.actions
+export const { setStory, setSingleStory, setSeenStory } = storySlice.actions
 export default storySlice.reducer

@@ -43,7 +43,7 @@ export async function prepareImage(asset: ImagePickerAsset): Promise<RNFile> {
     .renderAsync()
 
   const saved = await rendered.saveAsync({
-    format: ImageManipulator.SaveFormat.JPEG,
+    format: "jpeg",
     compress: STANDARD_IMAGE_QUALITY,
   })
 
