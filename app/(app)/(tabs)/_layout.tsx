@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { fetchMe } from '@/services/users/fetchMe'
 import { urlFromKey } from '@/services/media/urlFromKey'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { FashionTheme } from '@/constants/Theme'
 
 export const unstable_settings = {
   initialRouteName: 'home',
@@ -23,9 +24,9 @@ export const FLOATING_TAB_STYLE: ViewStyle = {
   height: 60,
   paddingTop: 4,
   borderRadius: 30,
-  backgroundColor: 'black',
-  shadowColor: '#000',
-  shadowOpacity: 0.15,
+  backgroundColor: FashionTheme.colors.surfaceStrong,
+  shadowColor: '#000000',
+  shadowOpacity: 0.12,
   shadowRadius: 8,
 }
 
@@ -64,6 +65,8 @@ function PersonalTabIcon({ color }: { color: string }) {
           height: 24,
           borderRadius: 16,
           backgroundColor: '#ccc',
+          borderWidth: 1,
+          borderColor: FashionTheme.colors.borderStrong,
         }}
       />
     )
@@ -91,7 +94,8 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: 'white',
+        tabBarActiveTintColor: FashionTheme.colors.inverseText,
+        tabBarInactiveTintColor: '#A3A3A3',
         headerShown: false,
 
         tabBarStyle: {
