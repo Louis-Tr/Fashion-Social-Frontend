@@ -1,19 +1,22 @@
 // app/(story)/[id].tsx
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Animated,
+  PanResponder,
+  Dimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Image } from 'expo-image'
 import { z } from 'zod'
 import { urlFromKey } from '@/services/media/urlFromKey'
-import { useDispatch } from 'react-redux'
-import type { AppDispatch } from '@/store/store'
+import { useDispatch, useSelector } from 'react-redux'
+import type { AppDispatch, RootState } from '@/store/store'
 import { fetchSingleStory } from '@/services/story/fetchSingleStory'
 
 const User = z.object({
@@ -43,19 +46,109 @@ function toStringParam(v: string | string[] | undefined) {
 export default function StoryScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
-    const dispatch = useDispatch<AppDispatch>()
+  const dispatch = useDispatch<AppDispatch>()
+  const { stories } = useSelector((state: RootState) => state.story)
 
   const id = toStringParam(params.id as string | string[] | undefined)
+  const [currentId, setCurrentId] = useState(id)
 
   const [story, setStory] = useState<StoryType | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const translateX = useRef(new Animated.Value(0)).current
+  const isTransitioningRef = useRef(false)
+  const screenWidth = Dimensions.get('window').width
+  const swipeThreshold = screenWidth * 0.22
+
+  useEffect(() => {
+    if (id) setCurrentId(id)
+  }, [id])
+
+  const currentIndex = useMemo(
+    () => stories.findIndex((item) => item.id === currentId),
+    [stories, currentId]
+  )
+
+  const animateBackToCenter = () => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 80,
+    }).start()
+  }
+
+  const handleStoryShift = (direction: 1 | -1) => {
+    if (isTransitioningRef.current) return
+
+    const target = stories[currentIndex + direction]
+    if (!target) {
+      animateBackToCenter()
+      return
+    }
+
+    isTransitioningRef.current = true
+    setError(null)
+
+    Animated.timing(translateX, {
+      toValue: -direction * screenWidth,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      setStory(target)
+      setCurrentId(target.id)
+      router.replace({
+        pathname: '/(app)/(story)/[id]',
+        params: { id: target.id },
+      })
+
+      translateX.setValue(direction * screenWidth)
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(() => {
+        isTransitioningRef.current = false
+      })
+    })
+  }
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) &&
+          Math.abs(gestureState.dx) > 10,
+        onPanResponderMove: (_, gestureState) => {
+          if (isTransitioningRef.current) return
+          translateX.setValue(gestureState.dx)
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (isTransitioningRef.current) return
+          if (gestureState.dx < -swipeThreshold) {
+            handleStoryShift(1)
+            return
+          }
+
+          if (gestureState.dx > swipeThreshold) {
+            handleStoryShift(-1)
+            return
+          }
+
+          animateBackToCenter()
+        },
+        onPanResponderTerminate: () => {
+          if (!isTransitioningRef.current) animateBackToCenter()
+        },
+      }),
+    [swipeThreshold, translateX, currentIndex, stories]
+  )
 
   useEffect(() => {
     let active = true
 
     async function loadStory() {
-      if (!id) {
+      if (!currentId) {
         setError('Missing story id')
         setLoading(false)
         return
@@ -65,8 +158,10 @@ export default function StoryScreen() {
         setLoading(true)
         setError(null)
 
-        const res = await dispatch(fetchSingleStory(id))
-        const payload = 'payload' in res ? res.payload : res
+        const res = await dispatch(fetchSingleStory(currentId))
+        const payload = ('payload' in res ? res.payload : res) as {
+          story: unknown
+        }
         const parsed = StorySchema.safeParse(payload.story)
 
         if (!active) return
@@ -90,7 +185,7 @@ export default function StoryScreen() {
     return () => {
       active = false
     }
-  }, [dispatch, id])
+  }, [dispatch, currentId])
 
   if (loading) {
     return (
@@ -172,7 +267,13 @@ export default function StoryScreen() {
           </View>
         ) : null}
 
-        <View style={styles.content}>
+        <Animated.View
+          style={[
+            styles.content,
+            { transform: [{ translateX }] },
+          ]}
+          {...panResponder.panHandlers}
+        >
           {story.presignUrl ? (
             <Image
               source={story.presignUrl}
@@ -190,7 +291,7 @@ export default function StoryScreen() {
               <Text style={styles.missingText}>Story image unavailable.</Text>
             </View>
           )}
-        </View>
+        </Animated.View>
       </View>
     </SafeAreaView>
   )
