@@ -7,10 +7,6 @@ export default function MessageLayout() {
       <Stack.Screen name="message" options={{ headerShown: false }} />
       <Stack.Screen
         name="[id]"
-        options={{
-          headerShown: true,
-          title: 'Conversation',
-        }}
       />
     </Stack>
   )

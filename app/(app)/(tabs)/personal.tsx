@@ -555,25 +555,6 @@ export default function MeProfileScreen() {
           activeOpacity={1}
           onPressOut={() => setIsOptionsModalVisible(false)}
         >
-          <View style={styles.optionsSheet}>
-            <TouchableOpacity
-              style={styles.optionsItem}
-              onPress={() =>
-                Alert.alert('Settings', 'Open settings (placeholder)')
-              }
-            >
-              <Text style={styles.optionsItemText}>Settings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.optionsItem}
-              onPress={() =>
-                Alert.alert('Share', 'Share profile (placeholder)')
-              }
-            >
-              <Text style={styles.optionsItemText}>Share profile</Text>
-            </TouchableOpacity>
-
             <TouchableOpacity style={styles.optionsItem} onPress={handleSignOut}>
               <Text style={styles.optionsDangerText}>Sign out</Text>
             </TouchableOpacity>
@@ -584,7 +565,7 @@ export default function MeProfileScreen() {
             >
               <Text style={styles.optionsCancelText}>Cancel</Text>
             </TouchableOpacity>
-          </View>
+          
         </TouchableOpacity>
       </Modal>
     </SafeAreaView>

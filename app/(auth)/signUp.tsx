@@ -577,42 +577,7 @@ export default function SignUpScreen() {
                     />
                   </View>
                 </View>
-
-                {/* Gender */}
-                <View style={styles.fieldBlock}>
-                  <View style={styles.labelRow}>
-                    <Text style={styles.label}>Gender</Text>
-                  </View>
-
-                  <View style={styles.genderRow}>
-                    {options.map((option) => {
-                      const selected = gender === option
-                      return (
-                        <TouchableOpacity
-                          key={option}
-                          onPress={() => setGender(option)}
-                          style={[
-                            styles.genderPill,
-                            selected
-                              ? styles.genderPillSelected
-                              : styles.genderPillUnselected,
-                          ]}
-                          activeOpacity={0.8}
-                        >
-                          <Text
-                            style={
-                              selected
-                                ? styles.genderTextSelected
-                                : styles.genderText
-                            }
-                          >
-                            {option}
-                          </Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
-                </View>
+                
               </View>
 
               {/* Password */}

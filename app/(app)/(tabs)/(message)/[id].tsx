@@ -19,7 +19,7 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams, Stack } from 'expo-router'
 import { useSelector, useDispatch } from 'react-redux'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -250,9 +250,10 @@ const TimeBreak = memo(function TimeBreak({ label }: { label: string }) {
 /* -------------------------- Screen Component ------------------------- */
 
 export default function ConversationScreen() {
-  const { id, avatarUri } = useLocalSearchParams<{
+  const { id, avatarUri, displayName } = useLocalSearchParams<{
     id: string
     avatarUri: string
+    displayName: string
   }>()
   const conversationId = id as string
 
@@ -342,14 +343,28 @@ export default function ConversationScreen() {
   }, [displayMessages])
 
   // load more (older) messages when user scrolls up
-  const handleLoadMore = useCallback(() => {
-    if (!conversationId || isLoadingConversation) return
-    console.log('[ConversationScreen] handleLoadMore', {
-      conversationId,
-      isLoadingConversation,
-    })
-    dispatch(fetchMessages(conversationId))
-  }, [conversationId, isLoadingConversation, dispatch])
+    const isFetchingMoreRef = useRef(false)
+    const onEndReachedCalledDuringMomentum = useRef(true)
+    const handleLoadMore = useCallback(async () => {
+      if (!conversationId) return
+      if (isLoadingConversation) return
+      if (isFetchingMoreRef.current) return
+      if (onEndReachedCalledDuringMomentum.current) return
+
+      try {
+        isFetchingMoreRef.current = true
+        onEndReachedCalledDuringMomentum.current = true
+
+        console.log('[ConversationScreen] handleLoadMore', {
+          conversationId,
+          isLoadingConversation,
+        })
+
+        await dispatch(fetchMessages(conversationId))
+      } finally {
+        isFetchingMoreRef.current = false
+      }
+    }, [conversationId, isLoadingConversation, dispatch])
 
   const renderItem = useCallback(
     ({ item, index }: { item: MessageRow; index: number }) => {
@@ -422,7 +437,15 @@ export default function ConversationScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+          <>
+                <Stack.Screen
+                  options={{
+                    headerShown: true,
+                    title: displayName || 'Conversation',
+                      headerBackTitleVisible: false,
+                  }}
+                />
+    <View style={styles.safeArea}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -438,7 +461,10 @@ export default function ConversationScreen() {
             contentContainerStyle={{ paddingVertical: 8 }}
             maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
             onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.05}
+            onEndReachedThreshold={0.2}
+            onMomentumScrollBegin={() => {
+              onEndReachedCalledDuringMomentum.current = false
+            }}
             ListFooterComponent={
               isLoadingConversation ? (
                 <View style={styles.footer}>
@@ -463,7 +489,8 @@ export default function ConversationScreen() {
           />
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
+          </>
   )
 }
 

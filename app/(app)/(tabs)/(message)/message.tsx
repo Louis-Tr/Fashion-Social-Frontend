@@ -109,6 +109,7 @@ export default function MessageListScreen() {
               params: {
                 id: item.id,
                 avatarUri: avatarUri,
+                  displayName: other.displayName
               },
             })
           }
